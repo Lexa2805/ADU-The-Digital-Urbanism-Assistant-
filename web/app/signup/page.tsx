@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
+import { createUserProfile } from '../../lib/profileService'
 import AuthLayout from '../../components/AuthLayout'
 import AuthCard from '../../components/AuthCard'
 import TextInput from '../../components/TextInput'
@@ -70,6 +71,8 @@ export default function SignupPage() {
 
         setLoading(true)
         try {
+            console.log('Starting signup for:', email)
+            
             // Înregistrare cu Supabase
             const { data, error } = await supabase.auth.signUp({
                 email,
@@ -108,6 +111,15 @@ export default function SignupPage() {
 
                 console.log('Signup success! User:', data.user)
                 console.log('Email confirmed:', data.user.email_confirmed_at)
+                
+                // Creează profilul utilizatorului în baza de date
+                try {
+                    await createUserProfile(data.user.id, name, 'citizen')
+                    console.log('Profile created successfully')
+                } catch (profileError) {
+                    console.error('Profile creation error:', profileError)
+                    // Continua oricum - profilul poate fi creat automat prin trigger
+                }
                 
                 setSuccess(true)
                 

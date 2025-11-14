@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
+import { getUserProfile } from '../../lib/profileService'
 import AuthLayout from '../../components/AuthLayout'
 import AuthCard from '../../components/AuthCard'
 import TextInput from '../../components/TextInput'
@@ -81,11 +82,94 @@ export default function LoginPage() {
 
             if (data.user) {
                 console.log('Login success! User:', data.user)
+                console.log('User ID:', data.user.id)
                 console.log('Session:', data.session)
                 
-                // Supabase gestionează automat sesiunea
-                // Redirect la dashboard/chat după autentificare
-                router.push('/chat')
+                // Așteaptă pentru stabilizarea sesiunii
+                await new Promise(resolve => setTimeout(resolve, 1000))
+                
+                // Încearcă să obții profilul de 3 ori (workaround pentru RLS timing issues)
+                let profile = null
+                let profileError = null
+                
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    console.log(`Attempt ${attempt} to fetch profile...`)
+                    
+                    const { data: profileData, error: err } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, role, created_at')
+                        .eq('id', data.user.id)
+                        .maybeSingle()  // Folosește maybeSingle în loc de single
+                    
+                    if (profileData) {
+                        profile = profileData
+                        break
+                    }
+                    
+                    profileError = err
+                    
+                    if (attempt < 3) {
+                        await new Promise(resolve => setTimeout(resolve, 500))
+                    }
+                }
+                
+                console.log('Profile query result:', { profile, profileError })
+                
+                // Redirect bazat pe rol
+                if (profile && profile.role) {
+                    console.log('Redirecting based on role:', profile.role)
+                    
+                    // Salvează rolul în localStorage pentru verificări ulterioare
+                    localStorage.setItem('user_role', profile.role)
+                    
+                    switch (profile.role) {
+                        case 'admin':
+                            router.push('/admin')
+                            break
+                        case 'clerk':
+                            router.push('/clerk')
+                            break
+                        case 'citizen':
+                        default:
+                            router.push('/citizen')
+                            break
+                    }
+                } else {
+                    // Dacă nu există profil după 3 încercări
+                    console.error('No profile found after 3 attempts!')
+                    console.error('Profile error:', profileError)
+                    
+                    // Încearcă să creezi profilul
+                    try {
+                        console.log('Attempting to create profile...')
+                        const { data: newProfile, error: createError } = await supabase
+                            .from('profiles')
+                            .insert({
+                                id: data.user.id,
+                                full_name: data.user.user_metadata?.full_name || '',
+                                role: 'citizen'
+                            })
+                            .select()
+                            .single()
+                        
+                        console.log('Profile creation result:', { newProfile, createError })
+                        
+                        if (newProfile) {
+                            console.log('Profile created successfully, redirecting to citizen')
+                            localStorage.setItem('user_role', 'citizen')
+                            router.push('/citizen')
+                        } else {
+                            setErrors({ 
+                                general: `Eroare la crearea profilului: ${createError?.message || 'Unknown error'}` 
+                            })
+                        }
+                    } catch (createError) {
+                        console.error('Failed to create profile:', createError)
+                        setErrors({ 
+                            general: 'Nu s-a putut crea profilul. Verifică politicile RLS în Supabase.' 
+                        })
+                    }
+                }
             }
         } catch (err) {
             console.error('Login error:', err)
