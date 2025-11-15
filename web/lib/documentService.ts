@@ -86,14 +86,24 @@ export async function getRequestDocuments(requestId: string): Promise<Document[]
 }
 
 /**
- * Obține URL-ul public pentru download
+ * Obține URL-ul signed (temporar) pentru download
+ * URL-ul expiră după 1 oră
  */
 export async function getDocumentUrl(storagePath: string): Promise<string> {
-  const { data } = supabase.storage
+  const { data, error } = await supabase.storage
     .from('uploads')
-    .getPublicUrl(storagePath)
+    .createSignedUrl(storagePath, 3600) // 1 oră = 3600 secunde
 
-  return data.publicUrl
+  if (error) {
+    console.error('Error creating signed URL:', error)
+    throw error
+  }
+
+  if (!data?.signedUrl) {
+    throw new Error('Failed to generate download URL')
+  }
+
+  return data.signedUrl
 }
 
 /**
