@@ -44,6 +44,9 @@ export default function FileUploadForm({
         prev.map((f) => ({ ...f, status: "uploading" as const }))
       );
 
+      // Get current user ID from Supabase
+      const { data: { user } } = await (await import('@/lib/supabaseClient')).supabase.auth.getUser();
+
       const formData = new FormData();
       files.forEach((fileWithStatus) => {
         formData.append("files", fileWithStatus.file);
@@ -53,6 +56,10 @@ export default function FileUploadForm({
         formData.append("dossier_id", dossierId);
       }
 
+      if (user?.id) {
+        formData.append("user_id", user.id);
+      }
+
       const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
         body: formData,
@@ -60,32 +67,67 @@ export default function FileUploadForm({
 
       const data: UploadResponse = await response.json();
 
-      if (data.success) {
-        // Marchează toate fișierele ca validate
-        setFiles((prev) =>
-          prev.map((f) => ({ ...f, status: "validated" as const }))
+      // Store validation results in sessionStorage for chatbot to review
+      if (data.documents_processed && user?.id) {
+        sessionStorage.setItem(
+          `pending_docs_${user.id}`,
+          JSON.stringify(data.documents_processed)
         );
-        
+
+        // Store procedure if detected
+        if (data.procedure) {
+          sessionStorage.setItem(
+            `procedure_${user.id}`,
+            JSON.stringify(data.procedure)
+          );
+        }
+
+        // Store missing documents
+        if (data.missing_documents) {
+          sessionStorage.setItem(
+            `missing_docs_${user.id}`,
+            JSON.stringify(data.missing_documents)
+          );
+        }
+      }
+
+      // Update file statuses based on validation
+      if (data.documents_processed) {
+        setFiles((prev) =>
+          prev.map((f) => {
+            const doc = data.documents_processed?.find(
+              (d) => d.filename === f.file.name
+            );
+            if (doc) {
+              return {
+                ...f,
+                status: doc.is_valid ? "validated" : "error",
+                errorMessage: doc.is_valid ? undefined : doc.validation_message,
+              };
+            }
+            return f;
+          })
+        );
+      }
+
+      // Show message to go to chatbot for confirmation
+      const hasInvalid = data.documents_processed?.some((d) => !d.is_valid);
+      if (hasInvalid) {
+        setUploadError(
+          "Unele documente au probleme. Mergi la Chat pentru a vedea detaliile și pentru ajutor."
+        );
+      } else {
+        setUploadError(null);
+        // Success - redirect to chat for confirmation
         if (onUploadComplete) {
           onUploadComplete(data);
         }
-      } else {
-        // Marchează fișierele cu eroare
-        const errorMessage = data.error || "Eroare la încărcare";
-        setFiles((prev) =>
-          prev.map((f) => ({
-            ...f,
-            status: "error" as const,
-            errorMessage,
-          }))
-        );
-        setUploadError(errorMessage);
       }
     } catch (error) {
       console.error("Upload error:", error);
       const errorMessage = "A apărut o eroare la încărcarea fișierelor. Te rog să încerci din nou.";
       setUploadError(errorMessage);
-      
+
       setFiles((prev) =>
         prev.map((f) => ({
           ...f,

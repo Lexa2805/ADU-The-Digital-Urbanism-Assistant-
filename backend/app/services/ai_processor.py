@@ -241,6 +241,17 @@ def get_rag_answer(question: str, context_chunks: list[str], conversation_contex
             if conversation_context.get("uploaded_documents"):
                 docs = ", ".join(conversation_context["uploaded_documents"])
                 context_info += f"\nDOCUMENTE ÎNCĂRCATE: {docs}"
+            
+            # Add detailed document validation information
+            if conversation_context.get("documents_details"):
+                context_info += "\n\nDETALII DOCUMENTE ÎNCĂRCATE:"
+                for doc in conversation_context["documents_details"]:
+                    status_emoji = "✅" if doc["status"] == "approved" else "⏳" if doc["status"] == "pending" else "❌"
+                    context_info += f"\n  {status_emoji} {doc['filename']}"
+                    context_info += f"\n     Tip: {doc['type']}"
+                    context_info += f"\n     Status validare: {doc['status']}"
+                    if doc.get("validation_message"):
+                        context_info += f"\n     Mesaj: {doc['validation_message']}"
 
         system_prompt = f"""Tu ești ADU (Asistentul Digital de Urbanism) - un ghid prietenos care ajută cetățenii din România să navigheze procesele de urbanism.
 
@@ -262,7 +273,11 @@ INSTRUCȚIUNI:
 - Dacă utilizatorul nu a specificat ce vrea să facă, întreabă-l cu opțiuni concrete
 - După ce înțelegi ce vrea, explică-i ce documente trebuie să încarce
 - Citează articolele relevante când este cazul
-- Dacă utilizatorul a încărcat documente, menționează-le în răspuns
+- Dacă utilizatorul a încărcat documente, analizează statusul lor și oferă feedback clar
+- Dacă documente sunt aprobate (approved), confirmă că sunt valide
+- Dacă documente sunt în așteptare (pending), spune că sunt în procesare
+- Dacă documente sunt respinse (rejected), explică ce trebuie corectat
+- Dacă toate documentele necesare sunt aprobate, felicită utilizatorul și spune-i care sunt următorii pași
 
 Răspunde în format JSON:
 {{

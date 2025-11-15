@@ -45,10 +45,17 @@ app.add_middleware(
 # Pydantic Models
 # ============================================
 
+class DocumentInfo(BaseModel):
+    type: str
+    status: str
+    filename: str
+    message: Optional[str] = None
+
 class ChatRequest(BaseModel):
     question: str
     procedure: Optional[str] = None  # Selected procedure key
     uploaded_documents: Optional[List[str]] = None  # List of uploaded doc types
+    uploaded_documents_info: Optional[List[DocumentInfo]] = None  # Detailed document info
 
 class Dossier(BaseModel):
     id: str
@@ -119,6 +126,18 @@ def chatbot(request: ChatRequest):
         if request.uploaded_documents:
             conversation_context["uploaded_documents"] = request.uploaded_documents
         
+        # Add detailed document info if available
+        if request.uploaded_documents_info:
+            conversation_context["documents_details"] = [
+                {
+                    "type": doc.type,
+                    "status": doc.status,
+                    "filename": doc.filename,
+                    "validation_message": doc.message
+                }
+                for doc in request.uploaded_documents_info
+            ]
+        
         # Get answer from AI using RAG with context
         ai_response = get_rag_answer(request.question, context_chunks, conversation_context)
         
@@ -162,7 +181,8 @@ def get_procedure_details(procedure_key: str):
 @app.post("/upload")
 async def upload_documents(
     files: List[UploadFile] = File(..., description="Upload one or more documents"),
-    procedure: Optional[str] = None
+    procedure: Optional[str] = None,
+    user_id: Optional[str] = None
 ):
     """
     Upload one or multiple documents. AI automatically detects document type
@@ -275,28 +295,52 @@ async def upload_documents(
             status = "Incomplete" if missing_documents else "Complete"
             summary = f"Lipsesc: {', '.join(missing_documents)}" if missing_documents else "Documente încărcate cu succes! Selectați o procedură pentru verificare completă."
         
-        # Save to database - using only fields that exist in your schema
-        dossier_data = {
-            "extracted_data": all_extracted_data,
-            "created_at": datetime.utcnow().isoformat()
-        }
+        # Save files to Supabase storage temporarily (not to database yet)
+        # User will review validation in chatbot and confirm before saving to DB
+        if user_id:
+            for i, file in enumerate(files):
+                if documents_processed[i].is_valid:
+                    try:
+                        file_path = f"documents/{user_id}/{file.filename}"
+                        file.file.seek(0)  # Reset file pointer
+                        file_content = await file.read()
+                        
+                        # Upload to Supabase storage
+                        supabase.storage.from_("documents").upload(
+                            file_path,
+                            file_content,
+                            {"content-type": file.content_type or "application/octet-stream"}
+                        )
+                    except Exception as storage_err:
+                        print(f"Storage upload warning for {file.filename}: {storage_err}")
+                        # Continue anyway - storage is not critical for validation
         
-        try:
-            response = supabase.table("documents").insert(dossier_data).execute()
-            
-            if response.data and len(response.data) > 0:
-                dossier_id = response.data[0].get("id")
+        # Prepare summary for chatbot review
+        valid_docs = [doc for doc in documents_processed if doc.is_valid]
+        invalid_docs = [doc for doc in documents_processed if not doc.is_valid]
+        
+        # Build detailed summary with missing documents info
+        if invalid_docs:
+            summary = f"⚠️ {len(invalid_docs)} document(e) au probleme:\n"
+            for doc in invalid_docs:
+                summary += f"\n• {doc.filename}: {doc.validation_message}"
+            if valid_docs:
+                summary += f"\n\n✅ {len(valid_docs)} document(e) sunt valide."
+            if missing_documents:
+                summary += f"\n\n📋 Lipsesc: {', '.join(missing_documents)}"
+            summary += "\n\n💬 Consultă chatbot-ul pentru ajutor în corectarea problemelor."
+        elif valid_docs:
+            if missing_documents:
+                summary = f"✅ Documentele încărcate sunt valide!\n\n⚠️ Dar lipsesc: {', '.join(missing_documents)}\n\n💬 Mergi la chatbot pentru detalii."
             else:
-                dossier_id = None
-        except Exception as db_error:
-            # Database save failed, but we can still return the results
-            print(f"Database error (non-fatal): {db_error}")
-            dossier_id = None
+                summary = f"✅ Toate documentele sunt valide și complete!\n\n💬 Mergi la chatbot pentru a confirma și trimite dosarul."
+        else:
+            summary = "❌ Nu s-a putut valida niciun document. Verifică fișierele și încearcă din nou."
         
-        # Return results even if database save failed
+        # Return results
         return UploadResponse(
             success=True,
-            dossier_id=str(dossier_id) if dossier_id else None,
+            dossier_id=None,  # No dossier until confirmed
             documents_processed=documents_processed,
             missing_documents=missing_documents if missing_documents else None,
             summary=summary,
@@ -360,6 +404,81 @@ async def upload_single_document(file: UploadFile = File(...)):
             success=False,
             error=f"Eroare: {str(e)}"
         )
+
+class ConfirmDocumentsRequest(BaseModel):
+    user_id: str
+    documents: List[dict]
+    files_data: Optional[List[dict]] = None  # [{ filename, content_base64, content_type }]
+    procedure: Optional[str] = None
+
+@app.post("/confirm-documents")
+async def confirm_documents(req: ConfirmDocumentsRequest):
+    """
+    Save validated documents to database after user confirms in chatbot.
+    This is called AFTER the user reviews validation results in chat.
+    """
+    try:
+        if not req.documents:
+            raise HTTPException(status_code=400, detail="No documents provided")
+        
+        # Check if we have all required documents for the procedure
+        if req.procedure:
+            uploaded_doc_types = [doc.get('document_type') for doc in req.documents if doc.get('is_valid')]
+            check_result = check_missing_documents(req.procedure, uploaded_doc_types)
+            
+            if not check_result.get("error") and not check_result["has_all_required"]:
+                missing_docs = [doc["description"] for doc in check_result["missing_required"]]
+                return {
+                    "success": False,
+                    "error": "missing_documents",
+                    "missing": missing_docs,
+                    "message": f"Lipsesc documente pentru {check_result['procedure']}: {', '.join(missing_docs)}"
+                }
+        
+        # Extract metadata from all documents
+        all_extracted_data = {}
+        for doc in req.documents:
+            if doc.get('extracted_data'):
+                all_extracted_data.update(doc.get('extracted_data', {}))
+        
+        # Create request in database
+        request_data = {
+            "user_id": req.user_id,
+            "request_type": req.procedure if req.procedure else "other",
+            "status": "pending_validation",
+            "extracted_metadata": all_extracted_data,
+            "priority": 0
+        }
+        
+        request_response = supabase.table("requests").insert(request_data).execute()
+        
+        if not request_response.data or len(request_response.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create request")
+        
+        request_id = request_response.data[0].get("id")
+        
+        # Save each document to database (metadata only, files already in storage from upload)
+        for doc in req.documents:
+            if doc.get('is_valid'):  # Only save valid documents
+                document_data = {
+                    "request_id": request_id,
+                    "storage_path": f"documents/{req.user_id}/{doc.get('filename')}",
+                    "file_name": doc.get('filename'),
+                    "document_type_ai": doc.get('document_type'),
+                    "validation_status": "approved",
+                    "validation_message": doc.get('validation_message')
+                }
+                supabase.table("documents").insert(document_data).execute()
+        
+        return {
+            "success": True,
+            "request_id": str(request_id),
+            "message": "Documentele au fost salvate cu succes și trimise spre verificare la primărie!"
+        }
+        
+    except Exception as e:
+        print(f"Error in confirm_documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/dossiers", response_model=List[Dossier])
 def get_all_dossiers():
@@ -583,3 +702,30 @@ def get_user_requests_status(user=Depends(get_current_user)):
         )
 
     return result
+
+@app.post("/clerk/documents/ai-validate")
+async def ai_validate_documents(
+    files: List[UploadFile] = File(...),
+    user=Depends(get_current_user),
+):
+    # NU citești nimic din DB aici, lucrezi DOAR cu fișierele primite
+    results = []
+
+    for f in files:
+        content = await f.read()
+
+        # 1. clasifici tipul
+        doc_type = detect_document_type(content)
+
+        # 2. dacă e buletin -> validate_id_card
+        #    dacă e plan/act -> extract_metadata
+        meta = extract_metadata(content, doc_type)
+
+        results.append({
+            "filename": f.filename,
+            "doc_type": doc_type,
+            "metadata": meta,
+            "is_valid": "error" not in meta,  # poți rafina
+        })
+
+    return {"documents": results}

@@ -3,13 +3,14 @@ import type { Message } from '@/types'
 
 export class ChatService {
   /**
-   * Salvează un mesaj în Supabase
+   * Salvează un mesaj în Supabase (optional - pentru persistență)
    */
   static async saveMessage(message: Omit<Message, 'id' | 'timestamp'>, requestId?: string): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
-      throw new Error('Utilizator neautentificat')
+      console.log('No authenticated user, skipping message save')
+      return // Don't throw - saving is optional
     }
 
     const { error } = await supabase
@@ -24,7 +25,7 @@ export class ChatService {
 
     if (error) {
       console.error('Error saving message:', error)
-      throw error
+      // Don't throw - saving is optional, app should continue working
     }
   }
 
@@ -33,9 +34,10 @@ export class ChatService {
    */
   static async loadMessages(): Promise<Message[]> {
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
-      throw new Error('Utilizator neautentificat')
+      console.log('No authenticated user, returning empty message history')
+      return []
     }
 
     const { data, error } = await supabase
@@ -46,7 +48,12 @@ export class ChatService {
 
     if (error) {
       console.error('Error loading messages:', error)
-      throw error
+      // Return empty array instead of throwing - message history is optional
+      return []
+    }
+
+    if (!data) {
+      return []
     }
 
     return data.map(msg => ({
@@ -63,7 +70,7 @@ export class ChatService {
    */
   static async clearMessages(): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
       throw new Error('Utilizator neautentificat')
     }
@@ -84,7 +91,7 @@ export class ChatService {
    */
   static async loadMessagesByRequest(requestId: string): Promise<Message[]> {
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
       throw new Error('Utilizator neautentificat')
     }

@@ -50,33 +50,38 @@ export default function LoginPage() {
 
         setLoading(true)
         try {
-            console.log('Attempting login for:', email)
-            
+            console.log('🔐 Attempting login for:', email.trim())
+            console.log('📧 Email length:', email.trim().length)
+            console.log('🔑 Password length:', password.length)
+
             // Autentificare cu Supabase
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password,
             })
 
-            console.log('Login response:', { data, error })
+            console.log('📬 Login response:', { data, error })
 
             if (error) {
                 console.error('Login error details:', error)
-                
+
                 // Mesaje de eroare mai detaliate
                 let errorMessage = 'Autentificare eșuată.'
-                
+
                 if (error.message.includes('Invalid login credentials')) {
-                    errorMessage = 'Email sau parolă incorectă. Asigură-te că ai creat deja un cont.'
+                    errorMessage = 'Email sau parolă incorectă.'
                 } else if (error.message.includes('Email not confirmed')) {
                     errorMessage = 'Te rugăm să îți confirmi adresa de email din inbox.'
                 } else if (error.message.includes('Email link is invalid')) {
                     errorMessage = 'Link-ul de confirmare a expirat. Încearcă să te înregistrezi din nou.'
+                } else if (error.message.includes('User not found')) {
+                    errorMessage = 'Nu există un cont cu acest email.'
                 } else {
                     errorMessage = error.message
                 }
-                
+
                 setErrors({ general: errorMessage })
+                setLoading(false)
                 return
             }
 
@@ -84,44 +89,44 @@ export default function LoginPage() {
                 console.log('Login success! User:', data.user)
                 console.log('User ID:', data.user.id)
                 console.log('Session:', data.session)
-                
+
                 // Așteaptă pentru stabilizarea sesiunii
                 await new Promise(resolve => setTimeout(resolve, 1000))
-                
+
                 // Încearcă să obții profilul de 3 ori (workaround pentru RLS timing issues)
                 let profile = null
                 let profileError = null
-                
+
                 for (let attempt = 1; attempt <= 3; attempt++) {
                     console.log(`Attempt ${attempt} to fetch profile...`)
-                    
+
                     const { data: profileData, error: err } = await supabase
                         .from('profiles')
                         .select('id, full_name, role, created_at')
                         .eq('id', data.user.id)
                         .maybeSingle()  // Folosește maybeSingle în loc de single
-                    
+
                     if (profileData) {
                         profile = profileData
                         break
                     }
-                    
+
                     profileError = err
-                    
+
                     if (attempt < 3) {
                         await new Promise(resolve => setTimeout(resolve, 500))
                     }
                 }
-                
+
                 console.log('Profile query result:', { profile, profileError })
-                
+
                 // Redirect bazat pe rol
                 if (profile && profile.role) {
                     console.log('Redirecting based on role:', profile.role)
-                    
+
                     // Salvează rolul în localStorage pentru verificări ulterioare
                     localStorage.setItem('user_role', profile.role)
-                    
+
                     switch (profile.role) {
                         case 'admin':
                             router.push('/admin')
@@ -138,7 +143,7 @@ export default function LoginPage() {
                     // Dacă nu există profil după 3 încercări
                     console.error('No profile found after 3 attempts!')
                     console.error('Profile error:', profileError)
-                    
+
                     // Încearcă să creezi profilul
                     try {
                         console.log('Attempting to create profile...')
@@ -151,22 +156,22 @@ export default function LoginPage() {
                             })
                             .select()
                             .single()
-                        
+
                         console.log('Profile creation result:', { newProfile, createError })
-                        
+
                         if (newProfile) {
                             console.log('Profile created successfully, redirecting to citizen')
                             localStorage.setItem('user_role', 'citizen')
                             router.push('/citizen')
                         } else {
-                            setErrors({ 
-                                general: `Eroare la crearea profilului: ${createError?.message || 'Unknown error'}` 
+                            setErrors({
+                                general: `Eroare la crearea profilului: ${createError?.message || 'Unknown error'}`
                             })
                         }
                     } catch (createError) {
                         console.error('Failed to create profile:', createError)
-                        setErrors({ 
-                            general: 'Nu s-a putut crea profilul. Verifică politicile RLS în Supabase.' 
+                        setErrors({
+                            general: 'Nu s-a putut crea profilul. Verifică politicile RLS în Supabase.'
                         })
                     }
                 }
@@ -237,6 +242,14 @@ export default function LoginPage() {
                     {errors.general && (
                         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                             <p className="text-sm text-red-600">{errors.general}</p>
+                            {errors.general.includes('Email sau parolă incorectă') && (
+                                <p className="text-sm text-gray-600 mt-2">
+                                    Nu ai cont încă?{' '}
+                                    <a href="/signup" className="text-purple-600 hover:text-purple-700 font-medium">
+                                        Creează unul aici
+                                    </a>
+                                </p>
+                            )}
                         </div>
                     )}
 
