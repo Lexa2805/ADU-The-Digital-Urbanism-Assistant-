@@ -166,3 +166,7 @@ crashlytics-build.properties
 # END OF FILE
 # ============================================================
 app/lib/env.dart
+web/IMPLEMENTATION_SUMMARY.md
+web/CITIZEN_FLOW_README.md
+web/BACKEND_INTEGRATION.md
+web/TESTING_GUIDE.md
