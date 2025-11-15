@@ -25,7 +25,7 @@ export interface Request {
     type: 'Point'
     coordinates: [number, number] // [lng, lat]
   } | null
-  extracted_metadata: any
+  extracted_metadata: Record<string, unknown> | null
   assigned_clerk_id: string | null
   created_at: string
 }
@@ -36,7 +36,7 @@ export interface CreateRequestData {
     lng: number
     lat: number
   }
-  metadata?: any
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -49,7 +49,7 @@ export async function createRequest(data: CreateRequestData) {
     throw new Error('User not authenticated')
   }
 
-  const requestData: any = {
+  const requestData: Partial<Request> = {
     user_id: user.id,
     request_type: data.request_type,
     status: 'draft',

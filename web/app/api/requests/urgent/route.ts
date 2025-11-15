@@ -6,15 +6,31 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type RequestRecord = {
+  id: string
+  user_id: string | null
+  assigned_clerk_id: string | null
+  legal_deadline: string | null
+  status: string
+  [key: string]: unknown
+}
+
+type ProfileRecord = {
+  id: string
+  email: string
+  full_name: string | null
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const daysThreshold = parseInt(searchParams.get('days') || '3')
+    const requestedDays = Number(searchParams.get('days'))
+    const daysThreshold = Number.isFinite(requestedDays) ? requestedDays : 3
 
     const thresholdDate = new Date()
     thresholdDate.setDate(thresholdDate.getDate() + daysThreshold)
 
-    const { data: requests, error } = await supabase
+    const { data: requestRows, error } = await supabase
       .from('requests')
       .select('*')
       .not('legal_deadline', 'is', null)
@@ -26,29 +42,44 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Fetch user and clerk details
-    const userIds = [...new Set(requests?.map(r => r.user_id).filter(Boolean))]
-    const clerkIds = [...new Set(requests?.map(r => r.assigned_clerk_id).filter(Boolean))]
-    
+    const requests: RequestRecord[] = requestRows ?? []
+
+    const userIds = Array.from(
+      new Set(requests.map(r => r.user_id).filter((id): id is string => Boolean(id)))
+    )
+    const clerkIds = Array.from(
+      new Set(requests.map(r => r.assigned_clerk_id).filter((id): id is string => Boolean(id)))
+    )
+
     const { data: users } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .in('id', userIds)
-    
+
     const { data: clerks } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .in('id', clerkIds)
 
-    // Combine data
-    const enrichedData = requests?.map(req => ({
-      ...req,
-      user: users?.find(u => u.id === req.user_id) || { email: 'unknown', full_name: null },
-      assigned_clerk: clerks?.find(c => c.id === req.assigned_clerk_id) || null
+    const userMap = (users ?? []).reduce<Record<string, ProfileRecord>>((acc, profile) => {
+      acc[profile.id] = profile
+      return acc
+    }, {})
+
+    const clerkMap = (clerks ?? []).reduce<Record<string, ProfileRecord>>((acc, profile) => {
+      acc[profile.id] = profile
+      return acc
+    }, {})
+
+    const enrichedData = requests.map(requestRecord => ({
+      ...requestRecord,
+      user: requestRecord.user_id ? userMap[requestRecord.user_id] ?? { email: 'unknown', full_name: null } : null,
+      assigned_clerk: requestRecord.assigned_clerk_id ? clerkMap[requestRecord.assigned_clerk_id] ?? null : null
     }))
 
     return NextResponse.json({ data: enrichedData })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error while fetching urgent requests'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

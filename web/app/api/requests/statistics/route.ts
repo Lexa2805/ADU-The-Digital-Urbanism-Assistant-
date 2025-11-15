@@ -6,32 +6,28 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type RequestRecord = {
+  status: string
+  request_type: string
+  created_at: string
+}
+
+const timeframeOffsets: Record<string, (date: Date) => Date> = {
+  '7d': date => new Date(date.getTime() - 7 * 24 * 60 * 60 * 1000),
+  '30d': date => new Date(date.getTime() - 30 * 24 * 60 * 60 * 1000),
+  '90d': date => new Date(date.getTime() - 90 * 24 * 60 * 60 * 1000),
+  '1y': date => new Date(date.setFullYear(date.getFullYear() - 1))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const timeframe = searchParams.get('timeframe') || '30d'
 
-    // Calculate date threshold
     const now = new Date()
-    let startDate = new Date()
-    
-    switch (timeframe) {
-      case '7d':
-        startDate.setDate(now.getDate() - 7)
-        break
-      case '30d':
-        startDate.setDate(now.getDate() - 30)
-        break
-      case '90d':
-        startDate.setDate(now.getDate() - 90)
-        break
-      case '1y':
-        startDate.setFullYear(now.getFullYear() - 1)
-        break
-    }
+    const startDate = timeframeOffsets[timeframe]?.(new Date(now)) ?? timeframeOffsets['30d'](new Date(now))
 
-    // Get all requests in timeframe
-    const { data: requests, error } = await supabase
+    const { data: requestRows, error } = await supabase
       .from('requests')
       .select('*')
       .gte('created_at', startDate.toISOString())
@@ -40,18 +36,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Calculate statistics
-    const total = requests?.length || 0
-    const pending = requests?.filter(r => r.status === 'pending_validation' || r.status === 'in_review').length || 0
-    const approved = requests?.filter(r => r.status === 'approved').length || 0
-    const rejected = requests?.filter(r => r.status === 'rejected').length || 0
-    const approval_rate = total > 0 ? ((approved / total) * 100).toFixed(1) : '0.0'
+    const requests: RequestRecord[] = requestRows ?? []
 
-    // Group by type
-    const byType: Record<string, number> = {}
-    requests?.forEach(req => {
-      byType[req.request_type] = (byType[req.request_type] || 0) + 1
-    })
+    const total = requests.length
+    const pending = requests.filter(r => r.status === 'pending_validation' || r.status === 'in_review').length
+    const approved = requests.filter(r => r.status === 'approved').length
+    const rejected = requests.filter(r => r.status === 'rejected').length
+    const approvalRate = total > 0 ? parseFloat(((approved / total) * 100).toFixed(1)) : 0
+
+    const byType: Record<string, number> = requests.reduce((acc, requestRecord) => {
+      acc[requestRecord.request_type] = (acc[requestRecord.request_type] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
 
     return NextResponse.json({
       data: {
@@ -59,11 +55,12 @@ export async function GET(request: NextRequest) {
         pending,
         approved,
         rejected,
-        approval_rate: parseFloat(approval_rate),
+        approval_rate: approvalRate,
         by_type: byType
       }
     })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error while computing request statistics'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

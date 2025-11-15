@@ -193,8 +193,8 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: AdminTab) => void }) {
             }
             setData(result.data)
             setError(null)
-        } catch (err: any) {
-            setError(err.message || 'Eroare necunoscută')
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Eroare necunoscută')
         } finally {
             setLoading(false)
         }

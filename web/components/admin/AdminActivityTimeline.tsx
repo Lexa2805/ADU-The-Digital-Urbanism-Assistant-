@@ -96,7 +96,7 @@ export default function AdminActivityTimeline({ activities }: AdminActivityTimel
     })
   }
 
-  const formatDetails = (details: Record<string, any> | null): string => {
+  const formatDetails = (details: Record<string, unknown> | null): string => {
     if (!details) return ''
     
     const entries = Object.entries(details)

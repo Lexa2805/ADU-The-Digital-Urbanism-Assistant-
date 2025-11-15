@@ -13,13 +13,9 @@ export default function AdminCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [view, setView] = useState<'month' | 'week'>('month')
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
   useEffect(() => {
-    loadEvents()
-  }, [currentDate])
-
-  const loadEvents = async () => {
+    const loadEvents = async () => {
     // Mock events - replace with real API call
     const mockEvents: CalendarEvent[] = [
       {
@@ -46,6 +42,8 @@ export default function AdminCalendar() {
     ]
     setEvents(mockEvents)
   }
+    loadEvents()
+  }, [currentDate])
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear()

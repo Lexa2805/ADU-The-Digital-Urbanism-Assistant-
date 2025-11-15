@@ -26,7 +26,7 @@ export default function ChatWindow({ messages, isLoading = false }: ChatWindowPr
             </h3>
             <p className="text-sm text-gray-600">
               Pune o întrebare despre procedurile de urbanism sau descrie ce vrei să realizezi.
-              De exemplu: "Vreau să închid balconul" sau "Am nevoie de autorizație pentru extindere".
+              De exemplu: &quot;Vreau să închid balconul&quot; sau &quot;Am nevoie de autorizație pentru extindere&quot;.
             </p>
           </div>
         </div>

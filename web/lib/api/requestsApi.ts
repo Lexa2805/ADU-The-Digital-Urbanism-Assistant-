@@ -9,8 +9,8 @@ export interface Request {
   status: 'draft' | 'pending_validation' | 'in_review' | 'rejected' | 'approved'
   priority: number
   legal_deadline: string | null
-  location: any
-  extracted_metadata: Record<string, any> | null
+  location: unknown
+  extracted_metadata: Record<string, unknown> | null
   assigned_clerk_id: string | null
   created_at: string
 }

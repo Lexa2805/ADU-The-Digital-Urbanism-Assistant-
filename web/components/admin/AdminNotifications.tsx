@@ -1,6 +1,5 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabaseClient'
 
 interface Notification {
   id: string
@@ -17,13 +16,7 @@ export default function AdminNotifications() {
   const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
-    loadNotifications()
-    // Refresh every 30 seconds
-    const interval = setInterval(loadNotifications, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const loadNotifications = async () => {
+    const loadNotifications = async () => {
     // Mock notifications - replace with real database query
     const mockNotifications: Notification[] = [
       {
@@ -54,6 +47,10 @@ export default function AdminNotifications() {
     setNotifications(mockNotifications)
     setUnreadCount(mockNotifications.filter(n => !n.read).length)
   }
+    loadNotifications()
+    const interval = setInterval(loadNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const markAsRead = async (id: string) => {
     setNotifications(prev =>

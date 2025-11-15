@@ -67,7 +67,7 @@ export default function AdminQuickActions({ onNavigate }: AdminQuickActionsProps
         styles: { fontSize: 9 }
       })
 
-      const startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : 32
+      const startY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10 : 32
       doc.setFontSize(11)
       doc.text('Documente respinse de AI', 14, startY)
       autoTable(doc, {

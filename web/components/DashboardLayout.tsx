@@ -10,25 +10,32 @@ type Props = {
     role: 'citizen' | 'clerk' | 'admin'
 }
 
+type User = {
+    id: string
+    email?: string
+    user_metadata?: {
+        full_name?: string
+    }
+}
+
 export default function DashboardLayout({ children, role }: Props) {
     const router = useRouter()
     const pathname = usePathname()
-    const [user, setUser] = useState<any>(null)
+    const [user, setUser] = useState<User | null>(null)
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        checkUser()
-    }, [])
-
-    const checkUser = async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-            router.push('/login')
-            return
+        const checkUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) {
+                router.push('/login')
+                return
+            }
+            setUser(user)
+            setLoading(false)
         }
-        setUser(user)
-        setLoading(false)
-    }
+        checkUser()
+    }, [router])
 
     const handleLogout = async () => {
         await supabase.auth.signOut()

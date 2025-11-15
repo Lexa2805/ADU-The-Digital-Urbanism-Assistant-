@@ -28,7 +28,7 @@ export interface AdminActivityLog {
   user_id: string | null
   affected_user_id: string | null
   action_type: string
-  details: Record<string, any> | null
+  details: Record<string, unknown> | null
   ip_address: string | null
   user_agent: string | null
   created_at: string
@@ -227,7 +227,7 @@ export async function logActivity(activity: {
   user_id: string | null
   affected_user_id?: string | null
   action_type: string
-  details?: Record<string, any>
+  details?: Record<string, unknown>
   ip_address?: string | null
   user_agent?: string | null
 }): Promise<void> {

@@ -6,53 +6,101 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type DocumentRecord = {
+  id: string
+  request_id: string | null
+  validation_status: string
+  uploaded_at: string
+  [key: string]: unknown
+}
+
+type RequestRecord = {
+  id: string
+  request_type: string
+  user_id: string | null
+}
+
+type ProfileRecord = {
+  id: string
+  email: string
+  full_name: string | null
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const parsedLimit = Number(searchParams.get('limit'))
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50
 
-    const { data: documents, error } = await supabase
+    const { data: documentRows, error: documentError } = await supabase
       .from('documents')
       .select('*')
       .eq('validation_status', 'rejected')
       .order('uploaded_at', { ascending: false })
       .limit(limit)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (documentError) {
+      return NextResponse.json({ error: documentError.message }, { status: 500 })
     }
 
-    // Fetch request details
-    const requestIds = [...new Set(documents?.map(d => d.request_id).filter(Boolean))]
-    
-    const { data: requests } = await supabase
-      .from('requests')
-      .select('id, request_type, user_id')
-      .in('id', requestIds)
+    const documents: DocumentRecord[] = documentRows ?? []
 
-    // Fetch user details
-    const userIds = [...new Set(requests?.map(r => r.user_id).filter(Boolean))]
-    const { data: users } = await supabase
-      .from('profiles')
-      .select('id, email, full_name')
-      .in('id', userIds)
+    const requestIds = Array.from(
+      new Set(documents.map(doc => doc.request_id).filter((id): id is string => Boolean(id)))
+    )
 
-    // Combine data
-    const enrichedData = documents?.map(doc => {
-      const req = requests?.find(r => r.id === doc.request_id)
-      const user = users?.find(u => u.id === req?.user_id)
+    let requests: RequestRecord[] = []
+    if (requestIds.length) {
+      const { data: requestRows, error: requestError } = await supabase
+        .from('requests')
+        .select('id, request_type, user_id')
+        .in('id', requestIds)
+
+      if (requestError) {
+        return NextResponse.json({ error: requestError.message }, { status: 500 })
+      }
+
+      requests = requestRows ?? []
+    }
+
+    const userIds = Array.from(
+      new Set(requests.map(req => req.user_id).filter((id): id is string => Boolean(id)))
+    )
+
+    let users: ProfileRecord[] = []
+    if (userIds.length) {
+      const { data: userRows, error: userError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', userIds)
+
+      if (userError) {
+        return NextResponse.json({ error: userError.message }, { status: 500 })
+      }
+
+      users = userRows ?? []
+    }
+
+    const enrichedData = documents.map(doc => {
+      const relatedRequest = requests.find(req => req.id === doc.request_id)
+      const relatedUser = relatedRequest
+        ? users.find(user => user.id === relatedRequest.user_id)
+        : undefined
       return {
         ...doc,
-        request: req ? {
-          id: req.id,
-          request_type: req.request_type,
-          user: user || { email: 'unknown', full_name: null }
-        } : null
+        request: relatedRequest
+          ? {
+              id: relatedRequest.id,
+              request_type: relatedRequest.request_type,
+              user: relatedUser ?? { email: 'unknown', full_name: null }
+            }
+          : null
       }
     })
 
     return NextResponse.json({ data: enrichedData })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error while fetching rejected documents'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -6,14 +6,30 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type RequestRecord = {
+  id: string
+  user_id: string | null
+  assigned_clerk_id: string | null
+  request_type: string
+  status: string
+  created_at: string
+  [key: string]: unknown
+}
+
+type ProfileRecord = {
+  id: string
+  email: string
+  full_name: string | null
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status')
-    const request_type = searchParams.get('request_type')
-    const assigned_clerk_id = searchParams.get('assigned_clerk_id')
-    const from_date = searchParams.get('from_date')
-    const to_date = searchParams.get('to_date')
+    const requestType = searchParams.get('request_type')
+    const assignedClerkId = searchParams.get('assigned_clerk_id')
+    const fromDate = searchParams.get('from_date')
+    const toDate = searchParams.get('to_date')
     const search = searchParams.get('search')
 
     let query = supabase
@@ -25,55 +41,69 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    if (request_type) {
-      query = query.eq('request_type', request_type)
+    if (requestType) {
+      query = query.eq('request_type', requestType)
     }
 
-    if (assigned_clerk_id) {
-      query = query.eq('assigned_clerk_id', assigned_clerk_id)
+    if (assignedClerkId) {
+      query = query.eq('assigned_clerk_id', assignedClerkId)
     }
 
-    if (from_date) {
-      query = query.gte('created_at', from_date)
+    if (fromDate) {
+      query = query.gte('created_at', fromDate)
     }
 
-    if (to_date) {
-      query = query.lte('created_at', to_date)
+    if (toDate) {
+      query = query.lte('created_at', toDate)
     }
 
     if (search) {
       query = query.or(`request_type.ilike.%${search}%`)
     }
 
-    const { data: requests, error } = await query
+    const { data: requestRows, error } = await query
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Fetch user details separately
-    const userIds = [...new Set(requests?.map(r => r.user_id).filter(Boolean))]
-    const clerkIds = [...new Set(requests?.map(r => r.assigned_clerk_id).filter(Boolean))]
-    
+    const requests: RequestRecord[] = requestRows ?? []
+
+    const userIds = Array.from(
+      new Set(requests.map(r => r.user_id).filter((id): id is string => Boolean(id)))
+    )
+    const clerkIds = Array.from(
+      new Set(requests.map(r => r.assigned_clerk_id).filter((id): id is string => Boolean(id)))
+    )
+
     const { data: users } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .in('id', userIds)
-    
+
     const { data: clerks } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .in('id', clerkIds)
 
-    // Combine data
-    const enrichedData = requests?.map(req => ({
+    const profilesById = (profiles: ProfileRecord[] | null | undefined) =>
+      (profiles ?? []).reduce<Record<string, ProfileRecord>>((acc, profile) => {
+        acc[profile.id] = profile
+        return acc
+      }, {})
+
+    const userMap = profilesById(users)
+    const clerkMap = profilesById(clerks)
+
+    const enrichedData = requests.map(req => ({
       ...req,
-      user: users?.find(u => u.id === req.user_id) || { email: 'unknown', full_name: null },
-      assigned_clerk: clerks?.find(c => c.id === req.assigned_clerk_id) || null
+      user: userMap[req.user_id ?? ''] ?? { email: 'unknown', full_name: null },
+      assigned_clerk: req.assigned_clerk_id ? clerkMap[req.assigned_clerk_id] ?? null : null
     }))
 
     return NextResponse.json({ data: enrichedData })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error while fetching requests'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

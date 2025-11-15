@@ -16,8 +16,8 @@ export interface RequestWithDetails {
     status: RequestStatus
     priority: number
     legal_deadline: string | null
-    location: any
-    extracted_metadata: any
+    location: unknown
+    extracted_metadata: unknown
     assigned_clerk_id: string | null
     created_at: string
     // Joined data
@@ -140,7 +140,7 @@ export async function getAllRequestsForClerk(filters?: {
 
     // Calculează zile până la deadline, număr documente și profil utilizator
     const requestsWithDetails: RequestWithDetails[] = await Promise.all(
-        (data || []).map(async (request: any) => {
+        (data || []).map(async (request: RequestWithDetails) => {
             // Profil utilizator
             const { data: profileData } = await supabase
                 .from('profiles')
