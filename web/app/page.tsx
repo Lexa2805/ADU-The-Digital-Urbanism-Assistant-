@@ -18,14 +18,14 @@ export default function Home() {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             <Link
-              href="/login"
+              href="/chat"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-8 py-4 text-lg font-semibold text-white shadow-lg hover:bg-purple-700 transition-all hover:shadow-xl"
             >
               <span>💬</span>
               <span>Începe o conversație</span>
             </Link>
             <Link
-              href="/login"
+              href="/upload"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-white border-2 border-purple-600 px-8 py-4 text-lg font-semibold text-purple-600 shadow-lg hover:bg-purple-50 transition-all"
             >
               <span>📤</span>
@@ -121,12 +121,12 @@ export default function Home() {
 
         {/* Quick Links */}
         <div className="mt-16 text-center">
-          <p className="text-gray-600 mb-4">Ai deja un cont?</p>
+          <p className="text-gray-600 mb-4">Ai deja un dosar în curs?</p>
           <Link
-            href="/login"
+            href="/citizen/requests"
             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold"
           >
-            <span>Autentifică-te aici</span>
+            <span>Vezi dosarele tale</span>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>

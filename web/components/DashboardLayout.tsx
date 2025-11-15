@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '../lib/supabaseClient'
 import Link from 'next/link'
 import AdminNotifications from './admin/AdminNotifications'
@@ -12,6 +12,7 @@ type Props = {
 
 export default function DashboardLayout({ children, role }: Props) {
     const router = useRouter()
+    const pathname = usePathname()
     const [user, setUser] = useState<any>(null)
     const [loading, setLoading] = useState(true)
 
@@ -52,6 +53,35 @@ export default function DashboardLayout({ children, role }: Props) {
             case 'admin': return 'Administrator'
         }
     }
+
+    const getNavigationLinks = () => {
+        if (role === 'clerk') {
+            return [
+                { href: '/clerk', label: 'Dashboard', icon: '📊' },
+                { href: '/clerk/queue', label: 'Coada de Cereri', icon: '📋' },
+                { href: '/clerk/my-requests', label: 'Cererile Mele', icon: '📌' },
+                { href: '/clerk/reports', label: 'Rapoarte', icon: '📈' },
+            ]
+        }
+        if (role === 'admin') {
+            return [
+                { href: '/admin', label: 'Dashboard', icon: '📊' },
+                { href: '/admin/users', label: 'Utilizatori', icon: '👥' },
+                { href: '/admin/settings', label: 'Setări', icon: '⚙️' },
+            ]
+        }
+        if (role === 'citizen') {
+            return [
+                { href: '/citizen', label: 'Dashboard', icon: '🏠' },
+                { href: '/citizen/new-request', label: 'Cerere Nouă', icon: '➕' },
+                { href: '/citizen/requests', label: 'Cererile Mele', icon: '📋' },
+                { href: '/chat', label: 'Chat ADU', icon: '💬' },
+            ]
+        }
+        return []
+    }
+
+    const navLinks = getNavigationLinks()
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -107,6 +137,36 @@ export default function DashboardLayout({ children, role }: Props) {
                     </div>
                 </div>
             </header>
+
+            {/* Navigation Tabs (for Clerk and Admin) */}
+            {(role === 'clerk' || role === 'admin' || role === 'citizen') && navLinks.length > 0 && (
+                <nav className="bg-white border-b border-gray-200 shadow-sm">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex gap-1 overflow-x-auto">
+                            {navLinks.map((link) => {
+                                const isActive = pathname === link.href
+                                return (
+                                    <Link
+                                        key={link.href}
+                                        href={link.href}
+                                        className={`
+                                            flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap
+                                            border-b-2 transition-colors
+                                            ${isActive 
+                                                ? 'border-purple-600 text-purple-600 bg-purple-50' 
+                                                : 'border-transparent text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                                            }
+                                        `}
+                                    >
+                                        <span>{link.icon}</span>
+                                        <span>{link.label}</span>
+                                    </Link>
+                                )
+                            })}
+                        </div>
+                    </div>
+                </nav>
+            )}
 
             {/* Main Content */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

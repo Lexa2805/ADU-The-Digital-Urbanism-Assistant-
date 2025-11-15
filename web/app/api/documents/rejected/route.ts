@@ -11,10 +11,16 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    // Get documents first
-    const { data: documents, error } = await supabase
+    const { data, error } = await supabase
       .from('documents')
-      .select('*')
+      .select(`
+        *,
+        request:requests!documents_request_id_fkey(
+          id,
+          request_type,
+          user:profiles!requests_user_id_fkey(email, full_name)
+        )
+      `)
       .eq('validation_status', 'rejected')
       .order('uploaded_at', { ascending: false })
       .limit(limit)

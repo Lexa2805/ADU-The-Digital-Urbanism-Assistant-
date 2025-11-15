@@ -14,10 +14,13 @@ export async function GET(request: NextRequest) {
     const thresholdDate = new Date()
     thresholdDate.setDate(thresholdDate.getDate() + daysThreshold)
 
-    // Get requests first
-    const { data: requests, error } = await supabase
+    const { data, error } = await supabase
       .from('requests')
-      .select('*')
+      .select(`
+        *,
+        user:profiles!requests_user_id_fkey(email, full_name),
+        assigned_clerk:profiles!requests_assigned_clerk_id_fkey(email, full_name)
+      `)
       .not('legal_deadline', 'is', null)
       .lte('legal_deadline', thresholdDate.toISOString())
       .in('status', ['pending_validation', 'in_review'])
