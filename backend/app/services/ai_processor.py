@@ -273,11 +273,19 @@ INSTRUCȚIUNI:
 - Dacă utilizatorul nu a specificat ce vrea să facă, întreabă-l cu opțiuni concrete
 - După ce înțelegi ce vrea, explică-i ce documente trebuie să încarce
 - Citează articolele relevante când este cazul
-- Dacă utilizatorul a încărcat documente, analizează statusul lor și oferă feedback clar
-- Dacă documente sunt aprobate (approved), confirmă că sunt valide
-- Dacă documente sunt în așteptare (pending), spune că sunt în procesare
-- Dacă documente sunt respinse (rejected), explică ce trebuie corectat
-- Dacă toate documentele necesare sunt aprobate, felicită utilizatorul și spune-i care sunt următorii pași
+- Dacă utilizatorul a încărcat documente, analizează statusul lor și oferă feedback clar:
+  * Dacă documente sunt APROBATE (approved): Confirmă că sunt valide și spune următorii pași
+  * Dacă documente sunt RESPINSE (rejected): Explică EXACT ce trebuie corectat și cum să facă asta
+  * Dacă documente sunt în AȘTEPTARE (pending): Nu ar trebui să existe - toate sunt validate instant
+- Pentru documente RESPINSE, oferă ajutor pas cu pas:
+  * Explică ce lipsește sau ce este greșit
+  * Dă exemple concrete de ce trebuie făcut
+  * Sugerează pașii pentru a corecta problema
+  * Încurajează utilizatorul să încarce documentul corectat
+- Dacă toate documentele necesare sunt aprobate, felicită utilizatorul și explică:
+  * Ce se întâmplă în continuare
+  * Când va primi răspuns de la primărie
+  * Cum poate urmări statusul dosarului
 
 Răspunde în format JSON:
 {{

@@ -119,14 +119,35 @@ def chatbot(request: ChatRequest):
         # Search for relevant chunks based on the question
         context_chunks = search_relevant_chunks(request.question, all_chunks, max_results=3)
         
-        # Build conversation context
+  # Build conversation context
         conversation_context = {}
         if request.procedure:
             conversation_context["procedure"] = request.procedure
-        if request.uploaded_documents:
-            conversation_context["uploaded_documents"] = request.uploaded_documents
-        
-        # Add detailed document info if available
+
+        # --- START NOUA LOGICĂ ---
+        # Verificăm documentele ÎNAINTE de a apela AI-ul, dacă avem o procedură și documente
+        if request.procedure and request.uploaded_documents_info:
+            
+            # Extragem tipurile de documente valide din contextul primit de la frontend
+            uploaded_doc_types = [
+                doc.type 
+                for doc in request.uploaded_documents_info 
+                if doc.status == "approved" or doc.status == "validated" # Folosim statusul din frontend
+            ]
+            
+            # Apelăm funcția de verificare a cerințelor
+            check_result = check_missing_documents(request.procedure, uploaded_doc_types)
+            
+            if not check_result.get("error"):
+                # Adăugăm informațiile despre documente lipsă în contextul conversației
+                conversation_context["requirements_check"] = {
+                    "has_all_required": check_result.get("has_all_required", False),
+                    "missing_required": [doc["description"] for doc in check_result.get("missing_required", [])],
+                    "uploaded_count": check_result.get("uploaded_count", 0),
+                    "required_count": check_result.get("required_count", 0)
+                }
+
+        # Adăugăm detaliile documentelor (așa cum era și înainte)
         if request.uploaded_documents_info:
             conversation_context["documents_details"] = [
                 {
@@ -137,7 +158,8 @@ def chatbot(request: ChatRequest):
                 }
                 for doc in request.uploaded_documents_info
             ]
-        
+        # --- SFÂRȘIT NOUA LOGICĂ ---
+
         # Get answer from AI using RAG with context
         ai_response = get_rag_answer(request.question, context_chunks, conversation_context)
         
@@ -450,10 +472,21 @@ async def confirm_documents(req: ConfirmDocumentsRequest):
             "priority": 0
         }
         
-        request_response = supabase.table("requests").insert(request_data).execute()
+        print(f"🔄 Attempting to create request with data: {request_data}")
+        
+        try:
+            request_response = supabase.table("requests").insert(request_data).execute()
+            print(f"✅ Request created successfully: {request_response.data}")
+        except Exception as insert_error:
+            print(f"❌ Error inserting request: {str(insert_error)}")
+            print(f"📝 Request data: {request_data}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to create request: {str(insert_error)}"
+            )
         
         if not request_response.data or len(request_response.data) == 0:
-            raise HTTPException(status_code=500, detail="Failed to create request")
+            raise HTTPException(status_code=500, detail="Failed to create request - no data returned")
         
         request_id = request_response.data[0].get("id")
         
