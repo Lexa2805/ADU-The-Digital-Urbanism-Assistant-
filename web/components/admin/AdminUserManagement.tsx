@@ -16,6 +16,7 @@ export default function AdminUserManagement() {
     changeUserRole,
     toggleActive,
     updateUser,
+    removeUser,
     searchUsers,
     filterByRole,
     filterByActive
@@ -207,6 +208,7 @@ export default function AdminUserManagement() {
           onRoleChange={changeUserRole}
           onToggleActive={toggleActive}
           onUpdateUser={updateUser}
+          onDeleteUser={removeUser}
         />
       </div>
 

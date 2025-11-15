@@ -313,6 +313,7 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             question: messageText,
+            procedure: detectedProcedure, // Send detected procedure to backend
             uploaded_documents_info: docsContext, // Send document context to AI
           }),
         });
@@ -328,6 +329,11 @@ export default function ChatPage() {
       }
 
       const data = await response.json();
+
+      // Update detected procedure if AI found one
+      if (data.detected_procedure && !detectedProcedure) {
+        setDetectedProcedure(data.detected_procedure);
+      }
 
       // Adaugă răspunsul AI (FastAPI returns "answer" not "response")
       const assistantMessage: Message = {

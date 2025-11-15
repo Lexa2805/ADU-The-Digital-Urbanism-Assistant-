@@ -9,6 +9,7 @@ export default function FloatingChatButton() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [detectedProcedure, setDetectedProcedure] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Încarcă mesajele la deschiderea mini-chat-ului
@@ -62,7 +63,8 @@ export default function FloatingChatButton() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: inputMessage,
+          question: inputMessage,
+          procedure: detectedProcedure,
         }),
       })
 
@@ -71,6 +73,11 @@ export default function FloatingChatButton() {
       }
 
       const data: ChatbotResponse = await response.json()
+
+      // Update detected procedure
+      if (data.detected_procedure && !detectedProcedure) {
+        setDetectedProcedure(data.detected_procedure)
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),

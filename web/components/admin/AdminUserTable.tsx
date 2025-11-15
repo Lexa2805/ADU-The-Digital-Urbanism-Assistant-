@@ -13,16 +13,19 @@ interface AdminUserTableProps {
   onRoleChange: (userId: string, newRole: 'citizen' | 'clerk' | 'admin') => Promise<{ success: boolean; error?: string }>
   onToggleActive: (userId: string, isActive: boolean) => Promise<{ success: boolean; error?: string }>
   onUpdateUser: (userId: string, updates: Partial<Pick<AdminUser, 'full_name' | 'phone' | 'email'>>) => Promise<{ success: boolean; error?: string }>
+  onDeleteUser?: (userId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 export default function AdminUserTable({ 
   users, 
   onRoleChange, 
   onToggleActive,
-  onUpdateUser 
+  onUpdateUser,
+  onDeleteUser
 }: AdminUserTableProps) {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
 
   const getRoleBadge = (role: string) => {
     const badges = {
@@ -69,6 +72,31 @@ export default function AdminUserTable({
   const handleViewDetails = (user: AdminUser) => {
     setSelectedUser(user)
     setShowDetailsModal(true)
+  }
+
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (!onDeleteUser) return
+
+    const confirmDelete = window.confirm(
+      `Sigur vrei să ștergi utilizatorul ${user.full_name || user.email}?\n\n` +
+      `⚠️ ATENȚIE: Această acțiune va șterge:\n` +
+      `• Contul utilizatorului din sistem\n` +
+      `• Toate cererile și documentele asociate\n` +
+      `• Tot istoricul de activitate\n\n` +
+      `Această acțiune este IREVERSIBILĂ!`
+    )
+
+    if (!confirmDelete) return
+
+    setDeletingUserId(user.id)
+    const result = await onDeleteUser(user.id)
+    setDeletingUserId(null)
+
+    if (!result.success) {
+      alert(`Eroare: ${result.error || 'Nu s-a putut șterge utilizatorul.'}`)
+    } else {
+      alert(`Utilizatorul ${user.full_name || user.email} a fost șters cu succes.`)
+    }
   }
 
   return (
@@ -133,6 +161,7 @@ export default function AdminUserTable({
                     <button
                       onClick={() => handleViewDetails(user)}
                       className="px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+                      title="Vezi detalii"
                     >
                       Detalii
                     </button>
@@ -143,9 +172,30 @@ export default function AdminUserTable({
                           ? 'text-red-700 hover:bg-red-50'
                           : 'text-green-700 hover:bg-green-50'
                       }`}
+                      title={user.is_active ? 'Dezactivează cont' : 'Activează cont'}
                     >
                       {user.is_active ? 'Dezactivează' : 'Activează'}
                     </button>
+                    {onDeleteUser && (
+                      <button
+                        onClick={() => handleDeleteUser(user)}
+                        disabled={deletingUserId === user.id}
+                        className="px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Șterge utilizator permanent"
+                      >
+                        {deletingUserId === user.id ? (
+                          <span className="flex items-center gap-1">
+                            <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Șterge...
+                          </span>
+                        ) : (
+                          '🗑️ Șterge'
+                        )}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

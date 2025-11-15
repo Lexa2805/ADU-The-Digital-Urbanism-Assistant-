@@ -216,6 +216,48 @@ export async function updateUserInfo(
   })
 }
 
+/**
+ * Șterge un utilizator complet din sistem (GDPR compliant)
+ * Folosește API route care apelează Supabase Admin API
+ * Trigger-ul din DB va șterge automat profilul și datele asociate
+ */
+export async function deleteUser(
+  userId: string,
+  currentAdminId: string
+): Promise<void> {
+  // Nu permite adminului să se șteargă pe sine
+  if (userId === currentAdminId) {
+    throw new Error('Nu te poți șterge pe tine însuți!')
+  }
+
+  // Înregistrează în audit trail înainte de ștergere
+  await logActivity({
+    user_id: currentAdminId,
+    affected_user_id: userId,
+    action_type: 'admin_delete_user',
+    details: {
+      timestamp: new Date().toISOString(),
+      reason: 'Admin deletion via API'
+    }
+  })
+
+  // Apelează API route pentru ștergere
+  // API route-ul folosește Service Role Key pentru a șterge din Auth
+  const response = await fetch('/api/delete-user', {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId }),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Nu s-a putut șterge utilizatorul.')
+  }
+}
+
 // ============================================
 // AUDIT TRAIL & ISTORIC ACTIVITATE
 // ============================================

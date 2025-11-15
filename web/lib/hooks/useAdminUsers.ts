@@ -9,6 +9,7 @@ import {
   updateUserRole, 
   toggleUserActive,
   updateUserInfo,
+  deleteUser,
   AdminUser,
   AdminUserStats
 } from '../services/adminService'
@@ -123,6 +124,26 @@ export function useAdminUsers() {
     return users.filter(user => user.is_active === isActive)
   }
 
+  // Șterge un utilizator
+  const removeUser = async (userId: string) => {
+    try {
+      // Verifică dacă adminul încearcă să se șteargă pe sine
+      if (userId === currentAdminId) {
+        return { success: false, error: 'Nu te poți șterge pe tine însuți!' }
+      }
+
+      await deleteUser(userId, currentAdminId)
+      await loadUsers() // Reîncarcă lista
+      return { success: true }
+    } catch (err: any) {
+      console.error('Eroare la ștergerea utilizatorului:', err)
+      return { 
+        success: false, 
+        error: err.message || 'Nu s-a putut șterge utilizatorul.' 
+      }
+    }
+  }
+
   return {
     users,
     stats,
@@ -132,6 +153,7 @@ export function useAdminUsers() {
     changeUserRole,
     toggleActive,
     updateUser,
+    removeUser,
     searchUsers,
     filterByRole,
     filterByActive,
