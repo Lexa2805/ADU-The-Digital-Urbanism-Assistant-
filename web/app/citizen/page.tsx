@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import FloatingChatButton from '../../components/FloatingChatButton'
 import { supabase } from '../../lib/supabaseClient'
 
@@ -54,6 +55,7 @@ const REQUIRED_DOCUMENTS: Record<string, string[]> = {
 }
 
 export default function CitizenDashboard() {
+    const router = useRouter()
     const [requests, setRequests] = useState<Request[]>([])
     const [documents, setDocuments] = useState<Record<string, Document[]>>({})
     const [loading, setLoading] = useState(true)
@@ -141,9 +143,29 @@ export default function CitizenDashboard() {
         const pending = docs.filter(d => d.validation_status === 'pending').length
         return { validated, invalid, pending, total: docs.length }
     }
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut()
+        router.push('/login')
+    }
+
     return (
         <div className="p-8">
             <FloatingChatButton />
+            
+            {/* Logout Button */}
+            <div className="flex justify-end mb-4">
+                <button
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors shadow-sm"
+                >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Deconectare
+                </button>
+            </div>
+
             <div className="space-y-6">
                 {/* Welcome Card */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
