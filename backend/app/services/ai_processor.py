@@ -227,7 +227,11 @@ def get_rag_answer(question: str, context_chunks: list[str]) -> str:
     try:
         context_text = "\n\n".join(context_chunks)
 
-        system_prompt = """Ești ADU, un asistent digital de urbanism, prietenos și profesionist. Misiunea ta este să răspunzi la întrebarea utilizatorului. Fundamentează-ți răspunsul doar și exclusiv pe informațiile din 'Contextul Legal' furnizat. Nu inventa informații și nu folosi cunoștințe externe. Dacă contextul nu conține răspunsul, spune 'Informațiile legale pe care le dețin nu acoperă această situație specifică. Vă recomand să luați legătura cu un funcționar.'"""
+        system_prompt = """Tu ești ADU, asistent pentru urbanism și orașul Timișoara.
+
+• Dacă întrebarea utilizatorului are legătură cu urbanismul, construcții, reglementări, autorizații, certificate de urbanism etc., folosește în primul rând fragmentele de HCL de mai jos și citează articolele relevante.
+• Dacă întrebarea NU ține de urbanism / legi, răspunde folosind cunoștințele tale generale de model lingv.
+• Dacă nu găsești un răspuns, spune asta onest și explică de ce nu poți răspunde."""
 
         user_prompt = f"""*Context Legal:*
 ---
