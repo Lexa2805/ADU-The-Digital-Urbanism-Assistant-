@@ -211,7 +211,7 @@ def create_embedding(text_chunk: str) -> list[float]:
 # ========================================
 # Task 4: Funcția Chatbot (RAG)
 # ========================================
-def get_rag_answer(question: str, context_chunks: list[str]) -> str:
+def get_rag_answer(question: str, context_chunks: list[str], conversation_context: Optional[dict] = None) -> dict:
     """
     Generează un răspuns la întrebarea utilizatorului folosind RAG
     (Retrieval-Augmented Generation) prin OpenRouter.
@@ -220,42 +220,87 @@ def get_rag_answer(question: str, context_chunks: list[str]) -> str:
         question: Întrebarea utilizatorului
         context_chunks: Lista de fragmente de text relevante din
                         documentele legale
+        conversation_context: Context despre procedura selectată și documente încărcate
     
     Returns:
-        str: Răspunsul generat de AI
+        dict: {
+            "answer": str,
+            "detected_procedure": str | None,
+            "needs_documents": bool,
+            "suggested_action": str
+        }
     """
     try:
         context_text = "\n\n".join(context_chunks)
+        
+        # Contextul conversației (dacă există)
+        context_info = ""
+        if conversation_context:
+            if conversation_context.get("procedure"):
+                context_info += f"\n\nPROCEDURĂ SELECTATĂ: {conversation_context['procedure']}"
+            if conversation_context.get("uploaded_documents"):
+                docs = ", ".join(conversation_context["uploaded_documents"])
+                context_info += f"\nDOCUMENTE ÎNCĂRCATE: {docs}"
 
-        system_prompt = """Tu ești ADU, asistent pentru urbanism și orașul Timișoara.
+        system_prompt = f"""Tu ești ADU (Asistentul Digital de Urbanism) - un ghid prietenos care ajută cetățenii din România să navigheze procesele de urbanism.
 
-• Dacă întrebarea utilizatorului are legătură cu urbanismul, construcții, reglementări, autorizații, certificate de urbanism etc., folosește în primul rând fragmentele de HCL de mai jos și citează articolele relevante.
-• Dacă întrebarea NU ține de urbanism / legi, răspunde folosind cunoștințele tale generale de model lingv.
-• Dacă nu găsești un răspuns, spune asta onest și explică de ce nu poți răspunde."""
+PROCEDURI DISPONIBILE:
+- certificat_urbanism: Certificat de Urbanism
+- autorizatie_construire: Autorizație de Construire
+- autorizatie_desfiintare: Autorizație de Desființare
+- informare_urbanism: Informare de Urbanism
+- racord_utilitati: Racordare Utilități
+
+ROLUL TĂU:
+1. Identifică ce dorește să facă cetățeanul (construcție nouă, renovare, desființare, etc.)
+2. Explică-i ce documente sunt necesare pentru procedura dorită
+3. Ghidează-l pas cu pas prin proces
+4. Răspunde întrebări despre legislația de urbanism
+
+INSTRUCȚIUNI:
+- Folosește un ton prietenos și accesibil
+- Dacă utilizatorul nu a specificat ce vrea să facă, întreabă-l cu opțiuni concrete
+- După ce înțelegi ce vrea, explică-i ce documente trebuie să încarce
+- Citează articolele relevante când este cazul
+- Dacă utilizatorul a încărcat documente, menționează-le în răspuns
+
+Răspunde în format JSON:
+{{
+    "answer": "răspunsul complet pentru utilizator (în limba română)",
+    "detected_procedure": "cheia procedurii (ex: certificat_urbanism) sau null",
+    "needs_documents": true/false,
+    "suggested_action": "upload_documents" sau "answer_questions" sau "clarify_intent"
+}}"""
 
         user_prompt = f"""*Context Legal:*
 ---
 {context_text}
 ---
+{context_info}
 
 *Întrebarea Utilizatorului:*
-{question}
-
-*Răspunsul tău (în limba română):*"""
+{question}"""
 
         # Folosim formatul de mesaje OpenAI compatibil cu OpenRouter
         response = client.chat.completions.create(
-            model="openai/gpt-4o",  # Model rapid și deștept
+            model="openai/gpt-4o",
+            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         )
 
-        return response.choices[0].message.content.strip()
+        result = json.loads(response.choices[0].message.content)
+        return result
 
     except Exception as e:
-        return f"Ne cerem scuze, dar a apărut o eroare tehnică: {str(e)}. Vă rugăm să încercați din nou sau să contactați un funcționar."
+        return {
+            "answer": f"Ne cerem scuze, dar a apărut o eroare tehnică: {str(e)}. Vă rugăm să încercați din nou.",
+            "detected_procedure": None,
+            "needs_documents": False,
+            "suggested_action": "retry"
+        }
 
 
 # ========================================
