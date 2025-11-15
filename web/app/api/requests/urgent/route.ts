@@ -26,7 +26,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ data })
+    // Fetch user and clerk details
+    const userIds = [...new Set(requests?.map(r => r.user_id).filter(Boolean))]
+    const clerkIds = [...new Set(requests?.map(r => r.assigned_clerk_id).filter(Boolean))]
+    
+    const { data: users } = await supabase
+      .from('profiles')
+      .select('id, email, full_name')
+      .in('id', userIds)
+    
+    const { data: clerks } = await supabase
+      .from('profiles')
+      .select('id, email, full_name')
+      .in('id', clerkIds)
+
+    // Combine data
+    const enrichedData = requests?.map(req => ({
+      ...req,
+      user: users?.find(u => u.id === req.user_id) || { email: 'unknown', full_name: null },
+      assigned_clerk: clerks?.find(c => c.id === req.assigned_clerk_id) || null
+    }))
+
+    return NextResponse.json({ data: enrichedData })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
