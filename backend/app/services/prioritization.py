@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 
 
@@ -62,7 +62,7 @@ def prioritize_applications(applications: List[Application]) -> List[Dict]:
     if not applications:
         return []
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # câte cereri sunt pe fiecare categorie
     count_by_flow: Dict[str, int] = {}

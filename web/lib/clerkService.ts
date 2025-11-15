@@ -1,6 +1,9 @@
+// web/lib/clerkService.ts
+
 import { supabase } from './supabaseClient'
 import type { RequestStatus } from './requestService'
 
+// Interfața pentru statistici (rămâne neschimbată)
 export interface ClerkStats {
     pending_validation: number
     in_review: number
@@ -9,32 +12,41 @@ export interface ClerkStats {
     assigned_to_me: number
 }
 
+// Interfața de bază
 export interface RequestWithDetails {
     id: string
     user_id: string
     request_type: string
     status: RequestStatus
-    priority: number
+    priority: number // Coloana originală din DB
     legal_deadline: string | null
     location: unknown
-    extracted_metadata: unknown
+    extracted_metadata: any
     assigned_clerk_id: string | null
     created_at: string
-    // Joined data
     user_profile?: {
         full_name: string | null
         role: string
     }
     documents_count?: number
-    days_until_deadline?: number
+    days_until_deadline?: number // Acesta este câmpul vechi
 }
 
-/**
- * Obține statistici pentru dashboard-ul clerk
- */
+// ==========================================================
+// INTERFAȚA NOUĂ PENTRU DATELE DE LA BACKEND
+// ==========================================================
+export interface PrioritizedRequest extends RequestWithDetails {
+    priority_score: number      // Noul scor calculat de backend
+    backlog_in_category: number // Noul câmp de la backend
+    citizen_name: string        // Numele cetățeanului
+    days_left: number | null    // Noul câmp 'days_left' (înlocuiește 'days_until_deadline')
+}
+// ==========================================================
+
+// Funcția de statistici (rămâne neschimbată)
 export async function getClerkStats(): Promise<ClerkStats> {
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
         throw new Error('User not authenticated')
     }
@@ -54,7 +66,7 @@ export async function getClerkStats(): Promise<ClerkStats> {
     // Cereri aproape de deadline (următoarele 7 zile)
     const sevenDaysFromNow = new Date()
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7)
-    
+
     const { count: deadlineCount } = await supabase
         .from('requests')
         .select('*', { count: 'exact', head: true })
@@ -66,11 +78,11 @@ export async function getClerkStats(): Promise<ClerkStats> {
     const startOfMonth = new Date()
     startOfMonth.setDate(1)
     startOfMonth.setHours(0, 0, 0, 0)
-    
+
     const { count: completedCount } = await supabase
         .from('requests')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'approved')
+        .eq('status', 'approved') // Doar aprobate
         .gte('created_at', startOfMonth.toISOString())
 
     // Cereri asignate mie
@@ -89,46 +101,101 @@ export async function getClerkStats(): Promise<ClerkStats> {
     }
 }
 
-/**
- * Obține toate cererile pentru clerk cu detalii
- */
-export async function getAllRequestsForClerk(filters?: {
-    status?: RequestStatus | RequestStatus[]
+// ==========================================================
+// FUNCȚIA MODIFICATĂ PENTRU A APELA BACKEND-UL
+// ==========================================================
+export async function getPrioritizedRequests(): Promise<PrioritizedRequest[]> {
+
+    // Setează adresa backend-ului tău FastAPI
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+    try {
+        console.log("Fetching prioritized requests from FastAPI backend...");
+
+        // 1. Apelăm backend-ul FastAPI
+        const response = await fetch(`${API_URL}/clerk/requests/status`);
+
+        if (!response.ok) {
+            // AICI APARE EROAREA TA CÂND SERVERUL E OPRIT
+            const err = await response.text(); // Luăm textul erorii
+            console.error("Failed to fetch from FastAPI backend", response.status, response.statusText, err);
+            throw new Error('Failed to fetch prioritized requests. Asigură-te că serverul backend (FastAPI) rulează.');
+        }
+
+        let data = await response.json();
+        console.log(`Fetched ${data.length} requests from backend.`);
+
+        // 2. Mapăm datele pentru a se potrivi 100% cu componenta
+        const formattedData = data.map((req: any) => ({
+            ...req,
+            // Creăm câmpul 'citizen_name' pe care îl folosește componenta
+            citizen_name: req.user_profile?.full_name || 'N/A',
+            // Redenumim 'days_until_deadline' în 'days_left' pentru a se potrivi cu noul cod
+            days_left: req.days_until_deadline
+        }));
+
+        return formattedData as PrioritizedRequest[];
+
+    } catch (error) {
+        console.error('Error in getPrioritizedRequests:', error);
+        if (error instanceof TypeError && error.message.includes('fetch failed')) {
+            throw new Error('Conexiunea la backend-ul FastAPI (http://127.0.0.1:8000) a eșuat. Este pornit?');
+        }
+        throw error;
+    }
+}
+
+// ==========================================================
+// FUNCȚIA PENTRU A OBȚINE CERERILE PENTRU CLERK
+// ==========================================================
+export interface GetRequestsOptions {
     assignedToMe?: boolean
     sortBy?: 'priority' | 'created_at' | 'deadline'
-    sortOrder?: 'asc' | 'desc'
-}): Promise<RequestWithDetails[]> {
+    status?: RequestStatus | RequestStatus[]
+}
+
+export async function getAllRequestsForClerk(options: GetRequestsOptions = {}): Promise<RequestWithDetails[]> {
+    const { assignedToMe = false, sortBy = 'created_at', status } = options
+
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
         throw new Error('User not authenticated')
     }
 
     let query = supabase
         .from('requests')
-        .select('*')
+        .select(`
+            *,
+            user_profile:profiles!user_id(full_name, role)
+        `)
 
-    // Aplică filtre
-    if (filters?.status) {
-        if (Array.isArray(filters.status)) {
-            query = query.in('status', filters.status)
-        } else {
-            query = query.eq('status', filters.status)
-        }
-    }
-
-    if (filters?.assignedToMe) {
+    // Filter by assigned clerk if requested
+    if (assignedToMe) {
         query = query.eq('assigned_clerk_id', user.id)
     }
 
-    // Sortare
-    const sortBy = filters?.sortBy || 'priority'
-    const sortOrder = filters?.sortOrder || 'desc'
-    
-    if (sortBy === 'deadline') {
-        query = query.order('legal_deadline', { ascending: sortOrder === 'asc', nullsFirst: false })
-    } else {
-        query = query.order(sortBy, { ascending: sortOrder === 'asc' })
+    // Filter by status if provided
+    if (status) {
+        if (Array.isArray(status)) {
+            query = query.in('status', status)
+        } else {
+            query = query.eq('status', status)
+        }
+    }
+
+    // Sort by requested field
+    switch (sortBy) {
+        case 'priority':
+            query = query.order('priority', { ascending: false })
+            break
+        case 'deadline':
+            query = query.order('legal_deadline', { ascending: true, nullsFirst: false })
+            break
+        case 'created_at':
+        default:
+            query = query.order('created_at', { ascending: false })
+            break
     }
 
     const { data, error } = await query
@@ -138,49 +205,41 @@ export async function getAllRequestsForClerk(filters?: {
         throw error
     }
 
-    // Calculează zile până la deadline, număr documente și profil utilizator
-    const requestsWithDetails: RequestWithDetails[] = await Promise.all(
-        (data || []).map(async (request: RequestWithDetails) => {
-            // Profil utilizator
-            const { data: profileData } = await supabase
-                .from('profiles')
-                .select('full_name, role')
-                .eq('id', request.user_id)
-                .single()
-
-            // Număr documente
+    // Get documents count for each request
+    const requestsWithCounts = await Promise.all(
+        (data || []).map(async (request) => {
             const { count } = await supabase
                 .from('documents')
                 .select('*', { count: 'exact', head: true })
                 .eq('request_id', request.id)
 
-            // Zile până la deadline
-            let daysUntilDeadline: number | null = null
+            // Calculate days until deadline
+            let daysUntilDeadline: number | undefined
             if (request.legal_deadline) {
                 const deadline = new Date(request.legal_deadline)
-                const today = new Date()
-                const diffTime = deadline.getTime() - today.getTime()
+                const now = new Date()
+                const diffTime = deadline.getTime() - now.getTime()
                 daysUntilDeadline = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
             }
 
             return {
                 ...request,
-                user_profile: profileData || undefined,
                 documents_count: count || 0,
                 days_until_deadline: daysUntilDeadline
             }
         })
     )
 
-    return requestsWithDetails
+    return requestsWithCounts as RequestWithDetails[]
 }
 
-/**
- * Asignează o cerere la clerk-ul curent
- */
+// ==========================================================
+// RESTUL FUNCȚIILOR (Rămân neschimbate)
+// ==========================================================
+
 export async function assignRequestToMe(requestId: string) {
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
         throw new Error('User not authenticated')
     }
@@ -192,7 +251,7 @@ export async function assignRequestToMe(requestId: string) {
             status: 'in_review'
         })
         .eq('id', requestId)
-        .eq('status', 'pending_validation') // Doar cereri neasignate
+        .eq('status', 'pending_validation')
         .select()
         .single()
 
@@ -204,9 +263,6 @@ export async function assignRequestToMe(requestId: string) {
     return data
 }
 
-/**
- * Eliberează o cerere (unassign)
- */
 export async function unassignRequest(requestId: string) {
     const { data, error } = await supabase
         .from('requests')
@@ -226,9 +282,6 @@ export async function unassignRequest(requestId: string) {
     return data
 }
 
-/**
- * Aprobă o cerere
- */
 export async function approveRequest(requestId: string, notes?: string) {
     // Obține metadata curentă
     const { data: currentRequest } = await supabase
@@ -262,9 +315,6 @@ export async function approveRequest(requestId: string, notes?: string) {
     return data
 }
 
-/**
- * Respinge o cerere
- */
 export async function rejectRequest(requestId: string, reason: string) {
     // Obține metadata curentă
     const { data: currentRequest } = await supabase
@@ -298,13 +348,10 @@ export async function rejectRequest(requestId: string, reason: string) {
     return data
 }
 
-/**
- * Actualizează prioritatea unei cereri
- */
 export async function updateRequestPriority(requestId: string, priority: number) {
     const { data, error } = await supabase
         .from('requests')
-        .update({ priority })
+        .update({ priority }) // Aici actualizăm coloana veche 'priority'
         .eq('id', requestId)
         .select()
         .single()

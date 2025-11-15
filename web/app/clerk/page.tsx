@@ -2,13 +2,15 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import DashboardLayout from '../../components/DashboardLayout'
-import { getClerkStats, getAllRequestsForClerk, assignRequestToMe, type ClerkStats, type RequestWithDetails } from '../../lib/clerkService'
+// IMPORTURI MODIFICATE
+import { getClerkStats, getPrioritizedRequests, assignRequestToMe, type ClerkStats, type PrioritizedRequest } from '../../lib/clerkService'
 import { getRequestTypes, getStatusLabel, getStatusColor } from '../../lib/requestService'
 
 export default function ClerkDashboard() {
     const router = useRouter()
     const [stats, setStats] = useState<ClerkStats | null>(null)
-    const [requests, setRequests] = useState<RequestWithDetails[]>([])
+    // TIP MODIFICAT
+    const [requests, setRequests] = useState<PrioritizedRequest[]>([]) 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -23,10 +25,8 @@ export default function ClerkDashboard() {
             
             const [statsData, requestsData] = await Promise.all([
                 getClerkStats(),
-                getAllRequestsForClerk({
-                    status: ['pending_validation', 'in_review'],
-                    sortBy: 'priority'
-                })
+                // FUNCȚIE MODIFICATĂ
+                getPrioritizedRequests()
             ])
 
             setStats(statsData)
@@ -101,7 +101,7 @@ export default function ClerkDashboard() {
                             color="orange"
                             icon={
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                 </svg>
                             }
                         />
@@ -111,7 +111,7 @@ export default function ClerkDashboard() {
                             color="green"
                             icon={
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                             }
                         />
@@ -121,7 +121,7 @@ export default function ClerkDashboard() {
                             color="indigo"
                             icon={
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
                             }
                         />
@@ -162,10 +162,11 @@ export default function ClerkDashboard() {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {requests.map(request => {
+                            {requests.map((request, index) => { // 'request' este acum PrioritizedRequest
                                 const requestTypes = getRequestTypes()
                                 const requestType = requestTypes.find(rt => rt.value === request.request_type)
-                                const isUrgent = request.days_until_deadline !== null && request.days_until_deadline <= 3
+                                // FOLOSIM NOUL CÂMP
+                                const isUrgent = request.days_left !== null && request.days_left <= 3
 
                                 return (
                                     <div
@@ -174,7 +175,10 @@ export default function ClerkDashboard() {
                                     >
                                         <div className="flex justify-between items-start">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-2">
+                                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                    <span className="text-lg font-bold text-purple-600">
+                                                        #{index + 1}
+                                                    </span>
                                                     <h4 className="font-semibold text-gray-800">
                                                         {requestType?.label || request.request_type}
                                                     </h4>
@@ -186,22 +190,23 @@ export default function ClerkDashboard() {
                                                             🔥 Urgent
                                                         </span>
                                                     )}
-                                                    {request.priority > 0 && (
-                                                        <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
-                                                            Prioritate {request.priority}
-                                                        </span>
-                                                    )}
+                                                    {/* BADGE PENTRU SCORUL DE PRIORITATE */}
+                                                    <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-bold">
+                                                        ⚡ {request.priority_score} puncte
+                                                    </span>
                                                 </div>
                                                 <div className="text-sm text-gray-600 space-y-1">
-                                                    <p>Solicitant: {request.user_profile?.full_name || 'N/A'}</p>
+                                                    {/* FOLOSIM NOUL CÂMP */}
+                                                    <p>Solicitant: {request.citizen_name || 'N/A'}</p>
                                                     <p>Adresă: {request.extracted_metadata?.address || 'Nedefinită'}</p>
                                                     <div className="flex items-center gap-4 mt-2">
                                                         <span className="flex items-center gap-1">
                                                             📄 {request.documents_count || 0} documente
                                                         </span>
-                                                        {request.days_until_deadline !== null && (
+                                                        {/* FOLOSIM NOUL CÂMP */}
+                                                        {request.days_left !== null && (
                                                             <span className={`flex items-center gap-1 ${isUrgent ? 'text-red-600 font-semibold' : ''}`}>
-                                                                ⏰ {request.days_until_deadline} zile
+                                                                ⏰ {request.days_left} zile
                                                             </span>
                                                         )}
                                                     </div>

@@ -565,78 +565,110 @@ def get_dossier_by_id(dossier_id: str):
         raise HTTPException(status_code=500, detail=f"Error fetching dossier: {str(e)}")
 
 @app.get("/requests/prioritized")
-def get_user_prioritized_requests(user=Depends(get_current_user)):
-    user_id = user["id"]  # Clerk user ID
-
-    # 1. luăm DOAR cererile userului curent
-    res = (
-        supabase.table("requests")
-        .select("*")
-        .eq("user_id", user_id)
-        .eq("status", "pending")
-        .execute()
-    )
-
-    rows = res.data or []
-
-    # 2. mapăm
-    apps: list[Application] = []
-    for r in rows:
-        submitted_at = datetime.fromisoformat(r["submitted_at"])
-        legal_due = (
-            datetime.fromisoformat(r["legal_due_date"])
-            if r.get("legal_due_date")
-            else None
+def get_all_prioritized_requests():
+    """
+    Get all pending and in_review requests sorted by priority.
+    Uses the prioritization algorithm to sort by:
+    1. Days left until legal deadline (most urgent first)
+    2. Backlog in category (more pending requests = higher priority)
+    3. Submission date (older requests first)
+    """
+    try:
+        # Get all requests that need processing (pending_validation or in_review)
+        res = (
+            supabase.table("requests")
+            .select("*, profiles!user_id(full_name)")
+            .in_("status", ["pending_validation", "in_review"])
+            .execute()
         )
-        apps.append(
-            Application(
-                id=str(r["id"]),
-                flow_type=r.get("flow_type", "necunoscut"),
-                submitted_at=submitted_at,
-                legal_due_date=legal_due,
-                status=r.get("status", "pending"),
+
+        rows = res.data or []
+
+        # Map to Application objects for prioritization
+        apps: list[Application] = []
+        for r in rows:
+            # Parse dates safely
+            try:
+                submitted_at = _parse_iso(r["created_at"])
+            except:
+                from datetime import timezone
+                submitted_at = datetime.now(timezone.utc)
+            
+            legal_due = None
+            if r.get("legal_deadline"):
+                try:
+                    legal_due = _parse_iso(r["legal_deadline"])
+                except:
+                    pass
+            
+            apps.append(
+                Application(
+                    id=str(r["id"]),
+                    flow_type=r.get("request_type", "other"),
+                    submitted_at=submitted_at,
+                    legal_due_date=legal_due,
+                    status=r.get("status", "pending_validation"),
+                )
             )
-        )
 
-    # 3. prioritizare
-    prioritized = prioritize_applications(apps)
+        # Apply prioritization algorithm
+        prioritized = prioritize_applications(apps)
 
-    return [
-        {
-            "id": item["id"],
-            "flow_type": item["flow_type"],
-            "submitted_at": item["submitted_at"],
-            "legal_due_date": item["legal_due_date"],
-            "days_left": item["days_left"],
-            "backlog_in_category": item["backlog_in_category"],
-            "priority_score": item["priority_score"],
-        }
-        for item in prioritized
-    ]
+        # Enrich with full request data
+        result = []
+        for item in prioritized:
+            # Find original request data
+            original = next((r for r in rows if str(r["id"]) == item["id"]), None)
+            if original:
+                result.append({
+                    "id": item["id"],
+                    "user_id": original["user_id"],
+                    "citizen_name": original.get("profiles", {}).get("full_name", "N/A") if original.get("profiles") else "N/A",
+                    "request_type": item["flow_type"],
+                    "status": original["status"],
+                    "priority": original.get("priority", 0),
+                    "assigned_clerk_id": original.get("assigned_clerk_id"),
+                    "created_at": original["created_at"],
+                    "legal_deadline": item["legal_due_date"].isoformat() if item["legal_due_date"] else None,
+                    "days_left": item["days_left"],
+                    "backlog_in_category": item["backlog_in_category"],
+                    "priority_score": item["priority_score"],
+                })
+
+        return result
+    
+    except Exception as e:
+        print(f"Error in get_all_prioritized_requests: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 def _parse_iso(dt_str: str) -> datetime:
     """Mic helper pentru stringuri ISO de la Supabase (cu sau fără Z)."""
     if dt_str is None:
         return None
     # Supabase trimite de obicei gen '2025-11-15T10:23:45.123456+00:00' sau cu 'Z'
-    return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+    from datetime import timezone
+    dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+    # Ensure timezone-aware datetime (convert to UTC if needed)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 @app.get("/clerk/requests/status")
-def get_user_requests_status(user=Depends(get_current_user)):
+def get_all_requests_status():
     """
-    Returnează pentru utilizatorul curent:
-    - toate cererile lui
+    Returnează pentru TOȚI utilizatorii:
+    - toate cererile
     - statusul + prioritatea (zile rămase, scor)
     - documentele aferente fiecărei cereri
-    - ce documente mai lipsesc conform procedurii
+    - INFORMAȚII PROFIL (NOU)
     """
-    user_id = user["id"]  # Clerk user ID
-
-    # 1. Cererile userului (indiferent de status, sau poți filtra doar pending)
+    
+    # 1. Cererile TUTUROR userilor (filtrează doar cele active)
+    # NOU: Luăm și datele de profil (user_profile)
     res_req = (
         supabase.table("requests")
-        .select("*")
-        .eq("user_id", user_id)
+        .select("*, user_profile:profiles(full_name, role)") 
+        .in_("status", ["pending_validation", "in_review"])
         .execute()
     )
     req_rows = res_req.data or []
@@ -644,97 +676,61 @@ def get_user_requests_status(user=Depends(get_current_user)):
     # 2. Mapăm la Application pentru calcul de prioritate
     apps: List[Application] = []
     for r in req_rows:
-        submitted_at = _parse_iso(r["submitted_at"])
-        legal_due = _parse_iso(r["legal_due_date"]) if r.get("legal_due_date") else None
+        submitted_at = _parse_iso(r["created_at"]) # Folosim created_at
+        legal_due = _parse_iso(r["legal_deadline"]) if r.get("legal_deadline") else None
 
         apps.append(
             Application(
                 id=str(r["id"]),
-                flow_type=r.get("flow_type", "necunoscut"),
+                flow_type=r.get("request_type", "altele"),
                 submitted_at=submitted_at,
                 legal_due_date=legal_due,
                 status=r.get("status", "pending"),
             )
         )
 
-    # 3. Calculăm prioritatea pentru toate cererile
+    # 3. Calculăm prioritatea pentru toate cererile folosind logica ta
     prioritized_list = prioritize_applications(apps)
     stats_by_id = {item["id"]: item for item in prioritized_list}
 
     result = []
 
-    # 4. Pentru fiecare cerere: documente + docs lipsă
+    # 4. Pentru fiecare cerere: adăugăm număr documente + date de prioritate
     for r in req_rows:
         request_id = str(r["id"])
-        flow_type = r.get("flow_type")
-        status = r.get("status")
-
-        # info de prioritate
         stats = stats_by_id.get(request_id, {})
 
-        # 4a. Documentele atașate cererii
+        # 4a. Numărul documentelor atașate cererii
         docs_res = (
             supabase.table("documents")
-            .select("*")
+            .select("id", count='exact', head=True) # Optimizat: doar numărăm
             .eq("request_id", request_id)
             .execute()
         )
-        docs_rows = docs_res.data or []
-
-        documents = [
-            {
-                "id": str(d["id"]),
-                "doc_type": d.get("doc_type"),
-                "status": d.get("status"),
-                "is_valid": d.get("is_valid"),
-                "uploaded_at": d.get("uploaded_at"),
-            }
-            for d in docs_rows
-        ]
-
-        uploaded_types = [
-            d["doc_type"]
-            for d in documents
-            if d.get("doc_type")
-        ]
-
-        # 4b. Ce documente mai lipsesc pentru procedura respectivă
-        missing_docs = None
-        if flow_type:
-            try:
-                # presupunem semnătura: check_missing_documents(flow_type, uploaded_types)
-                missing_info = check_missing_documents(flow_type, uploaded_types)
-                # dacă funcția ta întoarce dict cu cheie 'missing_documents' sau 'missing'
-                if isinstance(missing_info, dict):
-                    missing_docs = (
-                        missing_info.get("missing_documents")
-                        or missing_info.get("missing")
-                        or missing_info
-                    )
-                else:
-                    missing_docs = missing_info
-            except Exception:
-                # dacă ceva crapă, nu blocăm endpoint-ul, doar nu afișăm lipsurile
-                missing_docs = None
-
+        docs_count = docs_res.count or 0
+        
+        # 5. Formatăm datele pentru a se potrivi cu frontend-ul
         result.append(
             {
-                "id": request_id,
-                "flow_type": flow_type,
-                "status": status,
-                "submitted_at": r.get("submitted_at"),
-                "legal_due_date": r.get("legal_due_date"),
-                "priority": {
-                    "days_left": stats.get("days_left"),
-                    "priority_score": stats.get("priority_score"),
-                    "backlog_in_category": stats.get("backlog_in_category"),
-                },
-                "documents": documents,
-                "missing_documents": missing_docs,
+                **r, # includem toate datele originale ale cererii
+                "documents_count": docs_count,
+                "days_until_deadline": stats.get("days_left"),
+                "priority_score": stats.get("priority_score"), # FIX: Am redenumit din 'priority'
+                "backlog_in_category": stats.get("backlog_in_category"), # Adăugăm și backlog
             }
         )
 
+    # 6. Sortăm rezultatul final conform logicii tale din prioritization.py
+    result.sort(
+        key=lambda x: (
+            x["days_until_deadline"] if x["days_until_deadline"] is not None else 999, # 1. Zile rămase
+            -x.get("priority_score", 0), # 2. Scorul (desc)
+            _parse_iso(x["created_at"]) # 3. Data trimiterii
+        )
+    )
+
     return result
+
 
 @app.post("/clerk/documents/ai-validate")
 async def ai_validate_documents(
