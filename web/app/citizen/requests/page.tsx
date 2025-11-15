@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import DashboardLayout from '../../../components/DashboardLayout'
+import Link from 'next/link'
+import FloatingChatButton from '../../../components/FloatingChatButton'
 import { getUserRequests, getStatusLabel, getStatusColor, getRequestTypes } from '../../../lib/requestService'
 import { supabase } from '../../../lib/supabaseClient'
 
@@ -19,7 +20,7 @@ type Request = {
     updated_at: string
 }
 
-export default function RequestsPage() {
+export default function CitizenRequestsPage() {
     const [requests, setRequests] = useState<Request[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -64,23 +65,24 @@ export default function RequestsPage() {
     }
 
     return (
-        <DashboardLayout role="citizen">
+        <div className="p-8">
+            <FloatingChatButton />
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex justify-between items-center">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800">Cererile Mele</h1>
+                        <h1 className="text-2xl font-bold text-purple-700">Cererile Mele</h1>
                         <p className="text-gray-600 mt-1">Gestionează toate cererile tale de urbanism</p>
                     </div>
-                    <a
-                        href="/citizen/new-request"
+                    <Link
+                        href="/chat"
                         className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                         </svg>
                         Cerere Nouă
-                    </a>
+                    </Link>
                 </div>
 
                 {/* Filter Tabs */}
@@ -141,9 +143,9 @@ export default function RequestsPage() {
                             const requestType = requestTypes.find(rt => rt.value === request.request_type)
                             
                             return (
-                                <a
+                                <Link
                                     key={request.id}
-                                    href={`/citizen/requests/${request.id}`}
+                                    href={`/status/${request.id}`}
                                     className="block bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
                                 >
                                     <div className="flex justify-between items-start">
@@ -176,12 +178,12 @@ export default function RequestsPage() {
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                                         </svg>
                                     </div>
-                                </a>
+                                </Link>
                             )
                         })
                     )}
                 </div>
             </div>
-        </DashboardLayout>
+        </div>
     )
 }

@@ -63,8 +63,8 @@ export default function CitizenSidebar() {
 
     return (
         <div className="w-64 bg-white border-r border-gray-200 min-h-screen p-4">
-            <div className="mb-8">
-                <div className="flex items-center gap-3 px-3 py-2">
+            <Link href="/citizen" className="mb-8 block">
+                <div className="flex items-center gap-3 px-3 py-2 hover:bg-purple-50 rounded-lg transition-colors">
                     <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center shadow-md">
                         <span className="text-white font-semibold text-sm">ADU</span>
                     </div>
@@ -73,7 +73,7 @@ export default function CitizenSidebar() {
                         <p className="text-xs text-gray-500">Portal Cetățean</p>
                     </div>
                 </div>
-            </div>
+            </Link>
 
             <nav className="space-y-1">
                 {menuItems.map((item) => {

@@ -1,9 +1,149 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
+import FloatingChatButton from '../../components/FloatingChatButton'
+import { supabase } from '../../lib/supabaseClient'
+
+type Request = {
+    id: string
+    request_type: string
+    status: string
+    extracted_metadata?: {
+        address?: string
+    }
+    created_at: string
+}
+
+type Document = {
+    id: string
+    request_id: string
+    document_type: string
+    file_name: string
+    validation_status: string
+    uploaded_at: string
+}
+
+const REQUEST_TYPES: Record<string, string> = {
+    'building_permit': 'Autorizație de Construire',
+    'urbanism_certificate': 'Certificat de Urbanism',
+    'demolition_permit': 'Autorizație de Demolare',
+    'other': 'Altă cerere'
+}
+
+const REQUIRED_DOCUMENTS: Record<string, string[]> = {
+    'building_permit': [
+        'Actul de identitate',
+        'Dovada proprietății',
+        'Plan cadastral',
+        'Proiect arhitectural',
+        'Memoriu tehnic',
+        'Aviz PSI'
+    ],
+    'urbanism_certificate': [
+        'Actul de identitate',
+        'Dovada proprietății',
+        'Plan de încadrare în zonă',
+        'Extras CF'
+    ],
+    'demolition_permit': [
+        'Actul de identitate',
+        'Dovada proprietății',
+        'Documentație tehnică',
+        'Aviz ISU'
+    ]
+}
 
 export default function CitizenDashboard() {
+    const [requests, setRequests] = useState<Request[]>([])
+    const [documents, setDocuments] = useState<Record<string, Document[]>>({})
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        loadData()
+    }, [])
+
+    async function loadData() {
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+
+            // Încarcă cererile
+            const { data: requestsData, error: reqError } = await supabase
+                .from('requests')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(5)
+
+            if (reqError) throw reqError
+
+            setRequests(requestsData || [])
+
+            // Încarcă documentele pentru fiecare cerere
+            if (requestsData && requestsData.length > 0) {
+                const requestIds = requestsData.map(r => r.id)
+                const { data: docsData, error: docsError } = await supabase
+                    .from('documents')
+                    .select('*')
+                    .in('request_id', requestIds)
+
+                if (!docsError && docsData) {
+                    const docsByRequest: Record<string, Document[]> = {}
+                    docsData.forEach(doc => {
+                        if (!docsByRequest[doc.request_id]) {
+                            docsByRequest[doc.request_id] = []
+                        }
+                        docsByRequest[doc.request_id].push(doc)
+                    })
+                    setDocuments(docsByRequest)
+                }
+            }
+        } catch (error) {
+            console.error('Error loading data:', error)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const getStatusColor = (status: string) => {
+        const colors: Record<string, string> = {
+            'draft': 'bg-gray-100 text-gray-800',
+            'pending_validation': 'bg-yellow-100 text-yellow-800',
+            'in_review': 'bg-blue-100 text-blue-800',
+            'approved': 'bg-green-100 text-green-800',
+            'rejected': 'bg-red-100 text-red-800'
+        }
+        return colors[status] || 'bg-gray-100 text-gray-800'
+    }
+
+    const getStatusLabel = (status: string) => {
+        const labels: Record<string, string> = {
+            'draft': 'Ciornă',
+            'pending_validation': 'În validare',
+            'in_review': 'În evaluare',
+            'approved': 'Aprobat',
+            'rejected': 'Respins'
+        }
+        return labels[status] || status
+    }
+
+    const getMissingDocuments = (request: Request) => {
+        const required = REQUIRED_DOCUMENTS[request.request_type] || []
+        const uploaded = documents[request.id] || []
+        const uploadedTypes = uploaded.map(d => d.document_type)
+        return required.filter(doc => !uploadedTypes.includes(doc))
+    }
+
+    const getValidationStats = (requestId: string) => {
+        const docs = documents[requestId] || []
+        const validated = docs.filter(d => d.validation_status === 'valid').length
+        const invalid = docs.filter(d => d.validation_status === 'invalid').length
+        const pending = docs.filter(d => d.validation_status === 'pending').length
+        return { validated, invalid, pending, total: docs.length }
+    }
     return (
         <div className="p-8">
+            <FloatingChatButton />
             <div className="space-y-6">
                 {/* Welcome Card */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -54,14 +194,142 @@ export default function CitizenDashboard() {
 
                 {/* Status Overview */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Status Cereri Recente</h3>
-                    <div className="text-center py-8 text-gray-500">
-                        <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                        </svg>
-                        <p className="text-lg font-medium">Nu ai cereri active</p>
-                        <p className="text-sm mt-1">Creează prima ta cerere pentru a începe</p>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-gray-800">Cererile Mele Recente</h3>
+                        <Link href="/citizen/requests" className="text-sm text-purple-600 hover:text-purple-700 font-medium">
+                            Vezi toate →
+                        </Link>
                     </div>
+                    
+                    {loading ? (
+                        <div className="text-center py-8">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+                            <p className="text-gray-600 mt-4">Se încarcă...</p>
+                        </div>
+                    ) : requests.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                            </svg>
+                            <p className="text-lg font-medium">Nu ai cereri active</p>
+                            <p className="text-sm mt-1">Creează prima ta cerere pentru a începe</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {requests.map((request) => {
+                                const stats = getValidationStats(request.id)
+                                const missing = getMissingDocuments(request)
+                                
+                                return (
+                                    <div key={request.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between mb-3">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <h4 className="font-semibold text-gray-800">
+                                                        {REQUEST_TYPES[request.request_type] || request.request_type}
+                                                    </h4>
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                                                        {getStatusLabel(request.status)}
+                                                    </span>
+                                                </div>
+                                                <div className="text-sm text-gray-600">
+                                                    <p className="flex items-center gap-2">
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                        </svg>
+                                                        {request.extracted_metadata?.address || 'Adresă nedefinită'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Creat: {new Date(request.created_at).toLocaleDateString('ro-RO')}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Link
+                                                href={`/status/${request.id}`}
+                                                className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                                            >
+                                                Vezi status
+                                            </Link>
+                                        </div>
+
+                                        {/* Documente */}
+                                        <div className="mt-4 pt-4 border-t border-gray-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h5 className="text-sm font-semibold text-gray-700">Documente</h5>
+                                                <div className="flex gap-3 text-xs">
+                                                    {stats.validated > 0 && (
+                                                        <span className="flex items-center gap-1 text-green-600">
+                                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                                            </svg>
+                                                            {stats.validated} valide
+                                                        </span>
+                                                    )}
+                                                    {stats.invalid > 0 && (
+                                                        <span className="flex items-center gap-1 text-red-600">
+                                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                                            </svg>
+                                                            {stats.invalid} invalide
+                                                        </span>
+                                                    )}
+                                                    {stats.pending > 0 && (
+                                                        <span className="flex items-center gap-1 text-yellow-600">
+                                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                                            </svg>
+                                                            {stats.pending} în așteptare
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Documente lipsă */}
+                                            {missing.length > 0 && (
+                                                <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                                    <p className="text-sm font-medium text-yellow-800 mb-2">
+                                                        ⚠️ {missing.length} documente lipsă
+                                                    </p>
+                                                    <ul className="text-xs text-yellow-700 space-y-1">
+                                                        {missing.slice(0, 3).map((doc, idx) => (
+                                                            <li key={idx} className="flex items-center gap-2">
+                                                                <span>•</span>
+                                                                <span>{doc}</span>
+                                                            </li>
+                                                        ))}
+                                                        {missing.length > 3 && (
+                                                            <li className="text-yellow-600 font-medium">
+                                                                +{missing.length - 3} altele
+                                                            </li>
+                                                        )}
+                                                    </ul>
+                                                    <Link
+                                                        href="/upload"
+                                                        className="mt-2 inline-block text-xs text-yellow-800 font-semibold hover:text-yellow-900"
+                                                    >
+                                                        Încarcă documente →
+                                                    </Link>
+                                                </div>
+                                            )}
+
+                                            {/* Dosar complet */}
+                                            {missing.length === 0 && stats.total > 0 && (
+                                                <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                                                    <p className="text-sm font-medium text-green-800 flex items-center gap-2">
+                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                                        </svg>
+                                                        Dosar complet - toate documentele încărcate
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

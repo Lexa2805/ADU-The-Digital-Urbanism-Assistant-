@@ -2,12 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { DossierStatus, API_BASE_URL } from "@/types";
+import { DossierStatus, DossierStep } from "@/types";
 import StatusTimeline from "@/components/StatusTimeline";
 import CitizenPageLayout from "@/components/CitizenPageLayout";
 import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 
-export default function StatusPage() {
+type Request = {
+  id: string;
+  request_type: string;
+  status: string;
+  extracted_metadata?: {
+    address?: string;
+    cadastral_number?: string;
+    description?: string;
+  };
+  created_at: string;
+  updated_at: string;
+};
+
+export default function CitizenStatusPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -22,17 +36,27 @@ export default function StatusPage() {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch(`${API_BASE_URL}/dossier_status/${id}`);
+        // Fetch din Supabase în loc de API
+        const { data: request, error: dbError } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('id', id)
+          .single();
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error("Dosarul nu a fost găsit");
-          }
-          throw new Error("Eroare la încărcarea datelor");
+        if (dbError || !request) {
+          throw new Error("Dosarul nu a fost găsit");
         }
 
-        const data: DossierStatus = await response.json();
-        setDossierStatus(data);
+        // Mapează statusul din Supabase la structura DossierStatus
+        const mappedStatus: DossierStatus = {
+          dossier_id: request.id,
+          type: getRequestTypeLabel(request.request_type),
+          current_step: mapStatusToStepId(request.status),
+          submitted_at: request.created_at,
+          steps: generateSteps(request.status)
+        };
+
+        setDossierStatus(mappedStatus);
       } catch (err) {
         console.error("Error fetching dossier status:", err);
         setError(
@@ -47,6 +71,49 @@ export default function StatusPage() {
       fetchDossierStatus();
     }
   }, [id]);
+
+  const getRequestTypeLabel = (type: string): string => {
+    const types: Record<string, string> = {
+      'building_permit': 'Autorizație de Construire',
+      'urbanism_certificate': 'Certificat de Urbanism',
+      'demolition_permit': 'Autorizație de Demolare',
+      'other': 'Altă cerere'
+    };
+    return types[type] || type;
+  };
+
+  const mapStatusToStepId = (status: string): number => {
+    const statusMap: Record<string, number> = {
+      'draft': 1,
+      'pending_validation': 2,
+      'in_review': 3,
+      'approved': 5,
+      'rejected': 5
+    };
+    return statusMap[status] || 1;
+  };
+
+  const generateSteps = (currentStatus: string): DossierStep[] => {
+    const steps: DossierStep[] = [
+      { id: 1, label: 'Depunere cerere', status: 'done' },
+      { id: 2, label: 'Validare documente', status: 'pending' },
+      { id: 3, label: 'Evaluare tehnică', status: 'pending' },
+      { id: 4, label: 'Aprobare comisie', status: 'pending' },
+      { id: 5, label: 'Finalizare', status: 'pending' }
+    ];
+
+    const currentStepId = mapStatusToStepId(currentStatus);
+
+    steps.forEach((step, index) => {
+      if (step.id < currentStepId) {
+        step.status = 'done';
+      } else if (step.id === currentStepId) {
+        step.status = currentStatus === 'approved' ? 'done' : 'in_progress';
+      }
+    });
+
+    return steps;
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -69,182 +136,197 @@ export default function StatusPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
-          <p className="text-gray-600">Se încarcă statusul dosarului...</p>
+      <CitizenPageLayout>
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-600 border-t-transparent mb-4"></div>
+            <p className="text-gray-600">Se încarcă statusul dosarului...</p>
+          </div>
         </div>
-      </div>
+      </CitizenPageLayout>
     );
   }
 
   if (error || !dossierStatus) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-        <header className="bg-white shadow-sm border-b border-gray-200">
+      <CitizenPageLayout>
+        <div className="min-h-screen bg-white">
+          <header className="bg-white shadow-sm border-b border-gray-200">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+              <h1 className="text-2xl font-bold text-purple-700">Status dosar</h1>
+            </div>
+          </header>
+          <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+              <div className="text-6xl mb-4">⚠️</div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                {error || "Dosarul nu a fost găsit"}
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Nu am putut găsi informații despre dosarul cu numărul {id}.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => router.push('/citizen')}
+                  className="rounded-lg bg-purple-50 px-6 py-3 text-sm font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                >
+                  Înapoi la dashboard
+                </button>
+                <Link
+                  href="/citizen/requests"
+                  className="rounded-lg bg-purple-600 px-6 py-3 text-sm font-medium text-white hover:bg-purple-700 transition-colors inline-block"
+                >
+                  Vezi toate dosarele
+                </Link>
+              </div>
+            </div>
+          </main>
+        </div>
+      </CitizenPageLayout>
+    );
+  }
+
+  return (
+    <CitizenPageLayout>
+      <div className="min-h-screen bg-white">
+        {/* Header */}
+        <header className="bg-white shadow-sm border-b border-purple-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <h1 className="text-2xl font-bold text-gray-900">Status dosar</h1>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-purple-700">
+                  Status dosar
+                </h1>
+                <p className="text-sm text-gray-600 mt-1">
+                  Urmărește progresul cererii tale
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Link
+                  href="/chat"
+                  className="rounded-lg bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                >
+                  Chat
+                </Link>
+                <Link
+                  href="/citizen/requests"
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 transition-colors"
+                >
+                  Dosarele mele
+                </Link>
+              </div>
+            </div>
           </div>
         </header>
+
+        {/* Main Content */}
         <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {error || "Dosarul nu a fost găsit"}
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Nu am putut găsi informații despre dosarul cu numărul {id}.
-            </p>
-            <div className="flex gap-3 justify-center">
+          {/* Dossier Info Card */}
+          <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    {dossierStatus.type}
+                  </h2>
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    În procesare
+                  </span>
+                </div>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <p>
+                    <span className="font-medium">Număr dosar:</span>{" "}
+                    <span className="font-mono">{dossierStatus.dossier_id}</span>
+                  </p>
+                  <p>
+                    <span className="font-medium">Data depunerii:</span>{" "}
+                    {formatDate(dossierStatus.submitted_at)}
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={() => router.back()}
-                className="rounded-lg bg-purple-50 px-6 py-3 text-sm font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                onClick={() => window.location.reload()}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                title="Reîmprospătează"
               >
-                Înapoi
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
               </button>
-              <Link
-                href="/citizen/requests"
-                className="rounded-lg bg-purple-600 px-6 py-3 text-sm font-medium text-white hover:bg-purple-700 transition-colors inline-block"
-              >
-                Vezi toate dosarele
-              </Link>
+            </div>
+
+            {/* Current Status Banner */}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-purple-900">
+                    Etapa curentă
+                  </p>
+                  <p className="text-base font-bold text-purple-700">
+                    {getCurrentStepLabel()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <StatusTimeline
+              steps={dossierStatus.steps}
+              currentStep={dossierStatus.current_step}
+            />
+          </div>
+
+          {/* Help Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="text-3xl">💡</div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Ai întrebări despre dosarul tău?
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Dacă ai nevoie de informații suplimentare sau clarificări despre
+                  starea dosarului, te poți adresa la registratura primăriei sau ne
+                  poți contacta prin chat.
+                </p>
+                <Link
+                  href="/chat"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-purple-600 hover:text-purple-700"
+                >
+                  <span>Deschide chat-ul</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
             </div>
           </div>
         </main>
-      </div>
-    </CitizenPageLayout>
-  );
-}
-
-// Helper function for formatting dates
-function formatDate(dateString: string): string {
-            </div>
-            <div className="flex gap-3">
-              <Link
-                href="/chat"
-                className="rounded-lg bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 transition-colors"
-              >
-                Chat
-              </Link>
-              <Link
-                href="/citizen/requests"
-                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 transition-colors"
-              >
-                Dosarele mele
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Dossier Info Card */}
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {dossierStatus.type}
-                </h2>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                  În procesare
-                </span>
-              </div>
-              <div className="space-y-1 text-sm text-gray-600">
-                <p>
-                  <span className="font-medium">Număr dosar:</span>{" "}
-                  <span className="font-mono">{dossierStatus.dossier_id}</span>
-                </p>
-                <p>
-                  <span className="font-medium">Data depunerii:</span>{" "}
-                  {formatDate(dossierStatus.submitted_at)}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.location.reload()}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-              title="Reîmprospătează"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-            </button>
-          </div>
-
-          {/* Current Status Banner */}
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-6 h-6 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-purple-900">
-                  Etapa curentă
-                </p>
-                <p className="text-base font-bold text-purple-700">
-                  {getCurrentStepLabel()}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Timeline */}
-          <StatusTimeline
-            steps={dossierStatus.steps}
-            currentStep={dossierStatus.current_step}
-          />
-        </div>
-
-        {/* Help Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-start gap-4">
-            <div className="text-3xl">💡</div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Ai întrebări despre dosarul tău?
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Dacă ai nevoie de informații suplimentare sau clarificări despre
-                starea dosarului, te poți adresa la registratura primăriei sau ne
-                poți contacta prin chat.
-              </p>
-              <Link
-                href="/chat"
-                className="inline-flex items-center gap-2 text-sm font-medium text-purple-600 hover:text-purple-700"
-              >
-                <span>Deschide chat-ul</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </main>
       </div>
     </CitizenPageLayout>
   );

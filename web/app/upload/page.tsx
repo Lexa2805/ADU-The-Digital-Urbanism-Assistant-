@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import FileUploadForm from "@/components/FileUploadForm";
 import { UploadResponse } from "@/types";
 import CitizenPageLayout from "@/components/CitizenPageLayout";
+import FloatingChatButton from "@/components/FloatingChatButton";
 import Link from "next/link";
 
 export default function UploadPage() {
@@ -54,6 +55,7 @@ export default function UploadPage() {
 
   return (
     <CitizenPageLayout>
+      <FloatingChatButton />
       <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-purple-100">

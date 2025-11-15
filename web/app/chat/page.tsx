@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Message, ChatbotResponse, API_BASE_URL } from "@/types";
+import { ChatService } from "@/lib/chatService";
 import ChatWindow from "@/components/ChatWindow";
 import ChatInput from "@/components/ChatInput";
 import CitizenPageLayout from "@/components/CitizenPageLayout";
@@ -23,10 +24,21 @@ export default function ChatPage() {
         router.push('/login');
       } else {
         setIsCheckingAuth(false);
+        // Încarcă mesajele din Supabase
+        loadMessages();
       }
     };
     checkAuth();
   }, [router]);
+
+  const loadMessages = async () => {
+    try {
+      const loadedMessages = await ChatService.loadMessages();
+      setMessages(loadedMessages);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+    }
+  };
 
   if (isCheckingAuth) {
     return (
@@ -53,6 +65,12 @@ export default function ChatPage() {
     setError(null);
 
     try {
+      // Salvează mesajul utilizatorului în Supabase
+      await ChatService.saveMessage({
+        role: 'user',
+        content: messageText,
+      });
+
       // Apelează API-ul chatbot
       const response = await fetch(`${API_BASE_URL}/chatbot`, {
         method: "POST",
@@ -81,6 +99,13 @@ export default function ChatPage() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Salvează răspunsul AI în Supabase
+      await ChatService.saveMessage({
+        role: 'assistant',
+        content: data.answer,
+        checklist: data.checklist,
+      });
     } catch (err) {
       console.error("Error sending message:", err);
       setError(
@@ -97,6 +122,12 @@ export default function ChatPage() {
       };
 
       setMessages((prev) => [...prev, errorMessage]);
+
+      // Salvează mesajul de eroare
+      await ChatService.saveMessage({
+        role: 'assistant',
+        content: 'Îmi pare rău, am întâmpinat o problemă tehnică. Te rog să încerci din nou.',
+      }).catch(console.error);
     } finally {
       setIsLoading(false);
     }
