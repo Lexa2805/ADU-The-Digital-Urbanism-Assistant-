@@ -1,10 +1,9 @@
 'use client'
 import React from 'react'
-import DashboardLayout from '../../components/DashboardLayout'
 
 export default function CitizenDashboard() {
     return (
-        <DashboardLayout role="citizen">
+        <div className="p-8">
             <div className="space-y-6">
                 {/* Welcome Card */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -20,14 +19,25 @@ export default function CitizenDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <ActionCard
                         title="Cerere Nouă"
-                        description="Creează o nouă cerere de autorizație"
+                        description="Discută cu asistentul AI despre cererea ta"
                         icon={
                             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                             </svg>
                         }
                         color="purple"
-                        href="/citizen/new-request"
+                        href="/chat"
+                    />
+                    <ActionCard
+                        title="Încarcă Documente"
+                        description="Adaugă documente pentru dosarul tău"
+                        icon={
+                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                        }
+                        color="purple"
+                        href="/upload"
                     />
                     <ActionCard
                         title="Cererile Mele"
@@ -37,19 +47,8 @@ export default function CitizenDashboard() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
                         }
-                        color="blue"
+                        color="purple"
                         href="/citizen/requests"
-                    />
-                    <ActionCard
-                        title="Asistent AI"
-                        description="Obține ajutor de la asistentul virtual"
-                        icon={
-                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                            </svg>
-                        }
-                        color="green"
-                        href="/citizen/ai-chat"
                     />
                 </div>
 
@@ -65,7 +64,7 @@ export default function CitizenDashboard() {
                     </div>
                 </div>
             </div>
-        </DashboardLayout>
+        </div>
     )
 }
 

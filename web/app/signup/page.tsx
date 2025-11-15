@@ -157,7 +157,22 @@ export default function SignupPage() {
                         </p>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="space-y-5">
+                    <>
+                        {/* Buton înapoi */}
+                        <div className="mb-4">
+                            <button
+                                type="button"
+                                onClick={() => router.push('/')}
+                                className="inline-flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                                Înapoi
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-5">
                         <TextInput
                             id="name"
                             label="Nume complet"
@@ -250,7 +265,8 @@ export default function SignupPage() {
                                 Autentifică-te
                             </a>
                         </p>
-                    </form>
+                        </form>
+                    </>
                 )}
             </AuthCard>
         </AuthLayout>
