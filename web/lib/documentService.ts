@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
 export interface Document {
   id: string
   request_id: string
@@ -17,57 +19,109 @@ export interface UploadDocumentData {
 }
 
 /**
- * Upload un document în Supabase Storage
+ * Upload un document cu validare AI prin backend
+ * 
+ * Acest proces:
+ * 1. Trimite fișierul la backend pentru validare AI
+ * 2. Backend detectează tipul documentului (carte_identitate, plan_cadastral, etc.)
+ * 3. Backend validează documentul (ex: buletin expirat?)
+ * 4. Salvează în Supabase Storage + DB cu status validat
  */
+      
+
+
+
+
+
+
+
+
+
 export async function uploadDocument(data: UploadDocumentData): Promise<Document> {
   const { requestId, file } = data
-  
-  // Așteaptă ca sesiunea să fie încărcată
-  await new Promise(resolve => setTimeout(resolve, 100))
   
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     throw new Error('User not authenticated')
   }
 
-  // Generează un nume unic pentru fișier
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-  const storagePath = `${user.id}/${requestId}/${fileName}`
+  try {
+    // Trimite fișierul la backend pentru procesare AI
+    const formData = new FormData()
+    formData.append('files', file)
 
-  // Upload fișierul în Supabase Storage
-  const { error: uploadError } = await supabase.storage
-    .from('uploads')
-    .upload(storagePath, file, {
-      cacheControl: '3600',
-      upsert: false
+    const response = await fetch(`${API_BASE_URL}/upload?user_id=${user.id}`, {
+      method: 'POST',
+      body: formData,
     })
 
-  if (uploadError) {
-    console.error('Error uploading file:', uploadError)
-    throw uploadError
-  }
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Eroare la încărcarea documentului')
+    }
 
-  // Creează intrarea în tabelul documents
-  const { data: document, error: dbError } = await supabase
-    .from('documents')
-    .insert({
-      request_id: requestId,
-      storage_path: storagePath,
-      file_name: file.name,
-      validation_status: 'pending'
+    const result = await response.json()
+
+    // Verifică dacă backend-ul a returnat erori
+    if (!result.success || !result.documents_processed || result.documents_processed.length === 0) {
+      throw new Error(result.error || 'Nu s-au putut procesa documentele')
+    }
+
+    const processedDoc = result.documents_processed[0]
+
+    // Acum salvează în Supabase cu informațiile de la AI
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+    const storagePath = `${user.id}/${requestId}/${fileName}`
+
+    // Upload fișierul în Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('uploads')
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      })
+
+    if (uploadError) {
+      console.error('Error uploading file to storage:', uploadError)
+      throw uploadError
+    }
+
+    // Creează intrarea în tabelul documents cu rezultatele AI
+    const { data: document, error: dbError } = await supabase
+      .from('documents')
+      .insert({
+        request_id: requestId,
+        storage_path: storagePath,
+        file_name: file.name,
+        document_type_ai: processedDoc.document_type,
+        validation_status: processedDoc.is_valid ? 'approved' : 'rejected',
+        validation_message: processedDoc.validation_message,
+        extracted_metadata: processedDoc.extracted_data || {}
+      })
+      .select()
+      .single()
+
+    if (dbError) {
+      // Dacă baza de date eșuează, șterge fișierul din storage
+      await supabase.storage.from('uploads').remove([storagePath])
+      console.error('Error creating document record:', dbError)
+      throw dbError
+    }
+
+    console.log('✅ Document uploaded and validated:', {
+      filename: file.name,
+      type: processedDoc.document_type,
+      valid: processedDoc.is_valid,
+      message: processedDoc.validation_message
     })
-    .select()
-    .single()
 
-  if (dbError) {
-    // Dacă baza de date eșuează, șterge fișierul din storage
-    await supabase.storage.from('uploads').remove([storagePath])
-    console.error('Error creating document record:', dbError)
-    throw dbError
+    return document
+
+  } catch (error) {
+    console.error('Error in uploadDocument:', error)
+    throw error
   }
-
-  return document
 }
 
 /**

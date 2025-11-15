@@ -11,6 +11,8 @@ from app.services.ai_processor import (
     create_query_embedding,
     validate_id_card,
     extract_metadata,
+    extract_procedure_requirements,
+    validate_and_guide_dossier,
 )
 from app.services.knowledge_loader import load_all_documents, search_relevant_chunks
 from app.services.document_classifier import detect_document_type
@@ -53,6 +55,7 @@ class DocumentInfo(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
+    user_id: Optional[str] = None  # User ID for conversation history
     procedure: Optional[str] = None  # Selected procedure key
     uploaded_documents: Optional[List[str]] = None  # List of uploaded doc types
     uploaded_documents_info: Optional[List[DocumentInfo]] = None  # Detailed document info
@@ -104,10 +107,42 @@ def chatbot(request: ChatRequest):
     1. Identifies what the citizen wants to do (build, demolish, etc.)
     2. Lists required documents for that procedure
     3. Tracks uploaded documents and shows what's missing
-    4. Answers questions about urbanism using RAG 
+    4. Answers questions about urbanism using RAG
+    5. Maintains conversation history for context
     """
     try:
-        # Load local documents from knowledge_base folder
+        # 1. Load conversation history if user_id provided
+        conversation_history = []
+        if request.user_id:
+            try:
+                history_response = supabase.table("chat_messages").select("*").eq("user_id", request.user_id).order("created_at", desc=False).limit(20).execute()
+                if history_response.data:
+                    conversation_history = [
+                        {"role": msg["role"], "content": msg["content"]}
+                        for msg in history_response.data
+                    ]
+            except Exception as hist_err:
+                print(f"Warning: Could not load chat history: {hist_err}")
+        
+        # 2. Get user's uploaded documents with validation status from database
+        uploaded_docs_from_db = []
+        if request.user_id:
+            try:
+                docs_response = supabase.table("documents").select("*").eq("user_id", request.user_id).execute()
+                if docs_response.data:
+                    uploaded_docs_from_db = [
+                        {
+                            "type": doc.get("document_type_ai") or doc.get("document_type") or "unknown",
+                            "status": doc.get("validation_status", "unknown"),
+                            "filename": doc.get("file_name", "N/A"),
+                            "message": doc.get("validation_message", "")
+                        }
+                        for doc in docs_response.data
+                    ]
+            except Exception as docs_err:
+                print(f"Warning: Could not load documents: {docs_err}")
+        
+        # 3. Load local documents from knowledge_base folder
         local_chunks = load_all_documents()
         
         # Fetch content from configured URLs
@@ -119,7 +154,7 @@ def chatbot(request: ChatRequest):
         # Search for relevant chunks based on the question
         context_chunks = search_relevant_chunks(request.question, all_chunks, max_results=3)
         
-  # Build conversation context
+        # 4. Build conversation context
         conversation_context = {}
         if request.procedure:
             conversation_context["procedure"] = request.procedure
@@ -160,8 +195,32 @@ def chatbot(request: ChatRequest):
             ]
         # --- SFÂRȘIT NOUA LOGICĂ ---
 
-        # Get answer from AI using RAG with context
-        ai_response = get_rag_answer(request.question, context_chunks, conversation_context)
+        # 8. Get answer from AI using RAG with context and conversation history
+        ai_response = get_rag_answer(
+            request.question, 
+            context_chunks, 
+            conversation_context,
+            conversation_history
+        )
+        
+        # 9. Save user message and AI response to database
+        if request.user_id:
+            try:
+                # Save user message
+                supabase.table("chat_messages").insert({
+                    "user_id": request.user_id,
+                    "role": "user",
+                    "content": request.question
+                }).execute()
+                
+                # Save AI response
+                supabase.table("chat_messages").insert({
+                    "user_id": request.user_id,
+                    "role": "assistant",
+                    "content": ai_response.get("answer", "")
+                }).execute()
+            except Exception as save_err:
+                print(f"Warning: Could not save chat messages: {save_err}")
         
         # Get list of available procedures
         procedures = list_all_procedures()
@@ -293,9 +352,18 @@ async def upload_documents(
         missing_documents = []
         uploaded_doc_types = [doc.document_type for doc in documents_processed if doc.document_type != "unknown"]
         
-        if procedure:
+        # Try to detect procedure if not specified
+        detected_procedure = procedure
+        if not detected_procedure:
+            # Auto-detect based on uploaded documents
+            if "certificat_urbanism" in uploaded_doc_types:
+                detected_procedure = "autorizatie_construire"  # Most common next step
+            elif "plan_cadastral" in uploaded_doc_types and "act_proprietate" in uploaded_doc_types:
+                detected_procedure = "certificat_urbanism"  # Likely want CU
+            
+        if detected_procedure:
             # Check against specific procedure requirements
-            check_result = check_missing_documents(procedure, uploaded_doc_types)
+            check_result = check_missing_documents(detected_procedure, uploaded_doc_types)
             if not check_result.get("error"):
                 if not check_result["has_all_required"]:
                     missing_documents = [doc["description"] for doc in check_result["missing_required"]]
@@ -305,17 +373,14 @@ async def upload_documents(
                     status = "Complete"
                     summary = f"Toate documentele necesare pentru {check_result['procedure']} au fost încărcate!"
             else:
-                # Unknown procedure, fallback to basic check
-                if not has_id_card:
-                    missing_documents.append("Carte de identitate (validă și neexpirată)")
-                status = "Incomplete" if missing_documents else "Complete"
-                summary = f"Lipsesc: {', '.join(missing_documents)}" if missing_documents else "Documente încărcate cu succes!"
+                # Unknown procedure - don't assume anything
+                status = "Unknown"
+                summary = f"Procedura '{detected_procedure}' nu este recunoscută. Documentele au fost procesate, dar nu pot verifica ce lipsește."
         else:
-            # No procedure specified, just basic validation
-            if not has_id_card:
-                missing_documents.append("Carte de identitate (validă și neexpirată)")
-            status = "Incomplete" if missing_documents else "Complete"
-            summary = f"Lipsesc: {', '.join(missing_documents)}" if missing_documents else "Documente încărcate cu succes! Selectați o procedură pentru verificare completă."
+            # No procedure detected - just accept what was uploaded
+            status = "Uploaded"
+            valid_count = len([doc for doc in documents_processed if doc.is_valid])
+            summary = f"Am procesat {valid_count} document(e). Selectează o procedură în chatbot pentru a verifica ce mai lipsește."
         
         # Save files to Supabase storage temporarily (not to database yet)
         # User will review validation in chatbot and confirm before saving to DB
@@ -366,7 +431,7 @@ async def upload_documents(
             documents_processed=documents_processed,
             missing_documents=missing_documents if missing_documents else None,
             summary=summary,
-            procedure=procedure
+            procedure=detected_procedure  # Return detected or specified procedure
         )
             
     except Exception as e:
@@ -758,3 +823,182 @@ async def ai_validate_documents(
         })
 
     return {"documents": results}
+
+
+# ============================================
+# LLM1 & LLM2 Enhanced Endpoints
+# ============================================
+
+class TextChunk(BaseModel):
+    """Chunk de text cu URL-ul sursei"""
+    page_url: str
+    text: str
+
+class ExtractRequirementsRequest(BaseModel):
+    """Request pentru LLM1 - extragerea cerințelor"""
+    procedure_description: str
+    text_chunks: List[TextChunk]
+
+class ExistingDocument(BaseModel):
+    """Document deja încărcat de utilizator"""
+    doc_id: str
+    file_id: str
+    file_name: str
+
+class ValidateDossierRequest(BaseModel):
+    """Request pentru LLM2 - validarea dosarului"""
+    user_message: str
+    llm1_requirements: dict
+    existing_documents: Optional[List[ExistingDocument]] = None
+
+
+@app.post("/llm1/extract-requirements")
+def llm1_extract_requirements(request: ExtractRequirementsRequest):
+    """
+    LLM1 - Extrage cerințele de documentație dintr-un set de chunk-uri text.
+    
+    Acest endpoint primește:
+    - Descrierea procedurii (ex: "certificat de urbanism")
+    - Lista de chunk-uri de text de pe site-uri oficiale
+    
+    Returnează:
+    - Structură JSON cu toate documentele necesare
+    - Condiții și restricții pentru fiecare document
+    - Alte reguli (termene, taxe, etc.)
+    - Liste de incertitudini
+    
+    Exemplu request:
+    {
+        "procedure_description": "certificat de urbanism",
+        "text_chunks": [
+            {
+                "page_url": "https://www.primarie.ro/urbanism",
+                "text": "Pentru obținerea certificatului de urbanism sunt necesare următoarele documente:..."
+            }
+        ]
+    }
+    """
+    try:
+        # Convertim Pydantic models la dict-uri simple
+        chunks_dict = [{"page_url": chunk.page_url, "text": chunk.text} for chunk in request.text_chunks]
+        
+        result = extract_procedure_requirements(
+            procedure_description=request.procedure_description,
+            text_chunks=chunks_dict
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Eroare la extragerea cerințelor: {str(e)}")
+
+
+@app.post("/llm2/validate-dossier")
+def llm2_validate_dossier(request: ValidateDossierRequest):
+    """
+    LLM2 - Validează dosarul utilizatorului și oferă îndrumare.
+    
+    Acest endpoint primește:
+    - Mesajul utilizatorului
+    - Cerințele extrase de LLM1
+    - Lista documentelor deja încărcate (opțional)
+    
+    Returnează:
+    - Răspuns pentru utilizator (text în limba română)
+    - Acțiune recomandată (upload, validate, save)
+    - Liste cu documente lipsă sau în plus
+    - Obiect "dosar" gata de salvat (dacă totul e complet)
+    
+    Exemplu request:
+    {
+        "user_message": "Am încărcat buletinul și actul de proprietate",
+        "llm1_requirements": { ... },
+        "existing_documents": [
+            {"doc_id": "carte_identitate", "file_id": "abc123", "file_name": "CI.pdf"}
+        ]
+    }
+    """
+    try:
+        # Convertim Pydantic models la dict-uri simple
+        existing_docs_dict = None
+        if request.existing_documents:
+            existing_docs_dict = [
+                {
+                    "doc_id": doc.doc_id,
+                    "file_id": doc.file_id,
+                    "file_name": doc.file_name
+                }
+                for doc in request.existing_documents
+            ]
+        
+        result = validate_and_guide_dossier(
+            user_message=request.user_message,
+            llm1_requirements=request.llm1_requirements,
+            existing_documents=existing_docs_dict
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Eroare la validarea dosarului: {str(e)}")
+
+
+@app.post("/llm-workflow/complete")
+def complete_llm_workflow(
+    procedure_description: str,
+    text_chunks: List[TextChunk],
+    user_message: str,
+    existing_documents: Optional[List[ExistingDocument]] = None
+):
+    """
+    Workflow complet: LLM1 → LLM2
+    
+    Execută ambii pași:
+    1. LLM1 extrage cerințele din text
+    2. LLM2 validează dosarul utilizatorului
+    
+    Acest endpoint simplifică integrarea pentru frontend - trimite totul odată
+    și primește răspunsul final.
+    
+    Exemplu request:
+    {
+        "procedure_description": "certificat de urbanism",
+        "text_chunks": [...],
+        "user_message": "Am încărcat buletinul",
+        "existing_documents": [...]
+    }
+    """
+    try:
+        # Step 1: LLM1 extrage cerințele
+        chunks_dict = [{"page_url": chunk.page_url, "text": chunk.text} for chunk in text_chunks]
+        llm1_result = extract_procedure_requirements(
+            procedure_description=procedure_description,
+            text_chunks=chunks_dict
+        )
+        
+        # Step 2: LLM2 validează dosarul
+        existing_docs_dict = None
+        if existing_documents:
+            existing_docs_dict = [
+                {
+                    "doc_id": doc.doc_id,
+                    "file_id": doc.file_id,
+                    "file_name": doc.file_name
+                }
+                for doc in existing_documents
+            ]
+        
+        llm2_result = validate_and_guide_dossier(
+            user_message=user_message,
+            llm1_requirements=llm1_result,
+            existing_documents=existing_docs_dict
+        )
+        
+        # Returnăm ambele rezultate
+        return {
+            "llm1_requirements": llm1_result,
+            "llm2_guidance": llm2_result
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Eroare în workflow-ul LLM: {str(e)}")

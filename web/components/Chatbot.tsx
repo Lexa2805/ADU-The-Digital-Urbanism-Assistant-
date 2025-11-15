@@ -14,6 +14,7 @@ interface Message {
 }
 
 interface ChatbotProps {
+    userId?: string
     procedure?: string
     uploadedDocuments?: string[]
     onProcedureDetected?: (procedure: string) => void
@@ -22,6 +23,7 @@ interface ChatbotProps {
 }
 
 export default function Chatbot({
+    userId,
     procedure,
     uploadedDocuments,
     onProcedureDetected,
@@ -69,6 +71,7 @@ export default function Chatbot({
         try {
             const request: ChatRequest = {
                 question: input,
+                user_id: userId,
                 procedure,
                 uploaded_documents: uploadedDocuments,
             }

@@ -198,14 +198,17 @@ export default function ChatPage() {
     let content = `📊 **Rezultatele validării documentelor:**\n\n`;
 
     if (procedure) {
-      content += `📋 **Procedură detectată:** ${procedure}\n\n`;
+      content += `📋 **Procedură:** ${procedure}\n\n`;
     }
 
     if (valid.length > 0) {
-      content += `✅ **Documente valide (${valid.length}):**\n`;
+      content += `✅ **Documente procesate (${valid.length}):**\n`;
       valid.forEach(d => {
         content += `   • ${d.filename} - ${d.document_type}\n`;
-        content += `     ${d.validation_message}\n\n`;
+        if (d.validation_message && d.validation_message !== "Document acceptat") {
+          content += `     ${d.validation_message}\n`;
+        }
+        content += `\n`;
       });
     }
 
@@ -217,25 +220,30 @@ export default function ChatPage() {
       });
     }
 
-    if (missing && missing.length > 0) {
-      content += `\n📋 **Documente lipsă (${missing.length}):**\n`;
+    // Only show missing documents if we have a procedure
+    if (procedure && missing && missing.length > 0) {
+      content += `\n📋 **Documente lipsă pentru ${procedure} (${missing.length}):**\n`;
       missing.forEach(doc => {
         content += `   • ${doc}\n`;
       });
       content += `\n`;
     }
 
-    if (invalid.length > 0 || (missing && missing.length > 0)) {
+    if (invalid.length > 0 || (procedure && missing && missing.length > 0)) {
       content += `\n💬 **Ce trebuie să faci:**\n`;
       if (invalid.length > 0) {
         content += `1. Corectează documentele cu probleme\n`;
       }
-      if (missing && missing.length > 0) {
-        content += `${invalid.length > 0 ? '2' : '1'}. Încarcă documentele lipsă\n`;
+      if (procedure && missing && missing.length > 0) {
+        content += `${invalid.length > 0 ? '2' : '1'}. Încarcă documentele lipsă pentru ${procedure}\n`;
       }
-      content += `${invalid.length > 0 || missing.length > 0 ? (invalid.length > 0 && missing.length > 0 ? '3' : '2') : '1'}. După ce toate sunt complete, confirmă trimiterea\n`;
-    } else if (valid.length > 0) {
-      content += `\n✅ **Perfect! Toate documentele sunt valide și complete!**\n\n`;
+      content += `${invalid.length > 0 || (procedure && missing && missing.length > 0) ? (invalid.length > 0 && missing && missing.length > 0 ? '3' : '2') : '1'}. După ce toate sunt complete, confirmă trimiterea\n`;
+    } else if (valid.length > 0 && !procedure) {
+      content += `\n✅ **Documentele au fost procesate cu succes!**\n\n`;
+      content += `💬 Pentru a verifica ce documente mai lipsesc, **spune-mi ce procedură vrei** (ex: "Vreau certificat de urbanism").\n\n`;
+      content += `Sau întreabă-mă orice despre procedurile de urbanism!`;
+    } else if (valid.length > 0 && procedure) {
+      content += `\n✅ **Perfect! Toate documentele pentru ${procedure} sunt complete!**\n\n`;
       content += `Dosarul tău este gata de trimis spre verificare la primărie.\n\n`;
       content += `Scrie \"CONFIRM\" pentru a trimite dosarul.`;
     }
@@ -313,6 +321,7 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             question: messageText,
+            user_id: userId, // Send user ID for conversation history
             procedure: detectedProcedure, // Send detected procedure to backend
             uploaded_documents_info: docsContext, // Send document context to AI
           }),

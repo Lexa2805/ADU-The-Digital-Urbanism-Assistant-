@@ -1,13 +1,26 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Chatbot from '../../components/Chatbot'
 import DocumentUpload from '../../components/DocumentUpload'
 import { getProcedureLabel } from '../../lib/aduApi'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function ADUAssistantPage() {
+    const [userId, setUserId] = useState<string | undefined>()
     const [selectedProcedure, setSelectedProcedure] = useState<string | undefined>()
     const [uploadedDocuments, setUploadedDocuments] = useState<string[]>([])
     const [showUpload, setShowUpload] = useState(false)
+
+    useEffect(() => {
+        // Get current user ID
+        const getUserId = async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                setUserId(user.id)
+            }
+        }
+        getUserId()
+    }, [])
 
     const handleProcedureDetected = (procedure: string) => {
         setSelectedProcedure(procedure)
@@ -87,6 +100,7 @@ export default function ADUAssistantPage() {
                     <div className="lg:col-span-1">
                         <div className="h-[700px]">
                             <Chatbot
+                                userId={userId}
                                 procedure={selectedProcedure}
                                 uploadedDocuments={uploadedDocuments}
                                 onProcedureDetected={handleProcedureDetected}

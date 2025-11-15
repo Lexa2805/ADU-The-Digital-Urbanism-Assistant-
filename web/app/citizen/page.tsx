@@ -19,8 +19,10 @@ type Document = {
     id: string
     request_id: string
     document_type: string
+    document_type_ai?: string | null // Detectat de AI
     file_name: string
     validation_status: string
+    validation_message?: string | null
     uploaded_at: string
 }
 
@@ -31,26 +33,58 @@ const REQUEST_TYPES: Record<string, string> = {
     'other': 'Altă cerere'
 }
 
+// Mapping pentru request types (folosit în backend)
+const REQUEST_TYPE_MAPPING: Record<string, string> = {
+    'building_permit': 'autorizatie_construire',
+    'urbanism_certificate': 'certificat_urbanism',
+    'demolition_permit': 'autorizatie_desfiintare',
+    'certificat_urbanism': 'certificat_urbanism',
+    'autorizatie_construire': 'autorizatie_construire',
+    'autorizatie_desfiintare': 'autorizatie_desfiintare',
+    'informare_urbanism': 'informare_urbanism',
+    'racord_utilitati': 'racord_utilitati'
+}
+
+// Traduceri pentru tipurile de documente (detectate de AI)
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+    'carte_identitate': 'Carte de identitate',
+    'act_proprietate': 'Act de proprietate',
+    'plan_cadastral': 'Plan cadastral',
+    'certificat_urbanism': 'Certificat de urbanism',
+    'proiect_tehnic': 'Proiect tehnic',
+    'raport_tehnic': 'Raport tehnic',
+    'unknown': 'Document necunoscut'
+}
+
+// Documente necesare per procedură (conform document_requirements.py)
 const REQUIRED_DOCUMENTS: Record<string, string[]> = {
-    'building_permit': [
-        'Actul de identitate',
-        'Dovada proprietății',
-        'Plan cadastral',
-        'Proiect arhitectural',
-        'Memoriu tehnic',
-        'Aviz PSI'
+    'certificat_urbanism': [
+        'carte_identitate',
+        'act_proprietate',
+        'plan_cadastral'
     ],
-    'urbanism_certificate': [
-        'Actul de identitate',
-        'Dovada proprietății',
-        'Plan de încadrare în zonă',
-        'Extras CF'
+    'autorizatie_construire': [
+        'carte_identitate',
+        'certificat_urbanism',
+        'act_proprietate',
+        'plan_cadastral',
+        'proiect_tehnic'
     ],
-    'demolition_permit': [
-        'Actul de identitate',
-        'Dovada proprietății',
-        'Documentație tehnică',
-        'Aviz ISU'
+    'autorizatie_desfiintare': [
+        'carte_identitate',
+        'act_proprietate',
+        'plan_cadastral',
+        'raport_tehnic'
+    ],
+    'informare_urbanism': [
+        'carte_identitate',
+        'plan_cadastral'
+    ],
+    'racord_utilitati': [
+        'carte_identitate',
+        'act_proprietate',
+        'certificat_urbanism',
+        'plan_cadastral'
     ]
 }
 
@@ -130,16 +164,43 @@ export default function CitizenDashboard() {
     }
 
     const getMissingDocuments = (request: Request) => {
-        const required = REQUIRED_DOCUMENTS[request.request_type] || []
+        // Mapează request_type la procedură standard
+        const procedureKey = REQUEST_TYPE_MAPPING[request.request_type] || request.request_type
+        const required = REQUIRED_DOCUMENTS[procedureKey] || []
         const uploaded = documents[request.id] || []
-        const uploadedTypes = uploaded.map(d => d.document_type)
-        return required.filter(doc => !uploadedTypes.includes(doc))
+
+        // Folosim document_type_ai din baza de date (detectat de AI)
+        const uploadedTypes = uploaded
+            .filter(d => d.validation_status === 'approved') // Doar documente aprobate
+            .map(d => d.document_type_ai || d.document_type)
+            .filter(Boolean) // Elimină null/undefined
+
+        console.log('📊 Missing documents check:', {
+            request_type: request.request_type,
+            procedureKey,
+            required,
+            uploadedTypes,
+            uploaded: uploaded.map(d => ({
+                type: d.document_type_ai,
+                status: d.validation_status,
+                message: d.validation_message
+            }))
+        })
+
+        return required
+            .filter(doc => !uploadedTypes.includes(doc))
+            .map(doc => DOCUMENT_TYPE_LABELS[doc] || doc)
+    }
+
+    const getDocumentLabel = (docType: string | null | undefined): string => {
+        if (!docType) return 'Document necunoscut'
+        return DOCUMENT_TYPE_LABELS[docType] || docType
     }
 
     const getValidationStats = (requestId: string) => {
         const docs = documents[requestId] || []
-        const validated = docs.filter(d => d.validation_status === 'valid').length
-        const invalid = docs.filter(d => d.validation_status === 'invalid').length
+        const validated = docs.filter(d => d.validation_status === 'approved').length
+        const invalid = docs.filter(d => d.validation_status === 'rejected').length
         const pending = docs.filter(d => d.validation_status === 'pending').length
         return { validated, invalid, pending, total: docs.length }
     }
@@ -152,7 +213,7 @@ export default function CitizenDashboard() {
     return (
         <div className="p-8">
             <FloatingChatButton />
-            
+
             {/* Logout Button */}
             <div className="flex justify-end mb-4">
                 <button
@@ -222,7 +283,7 @@ export default function CitizenDashboard() {
                             Vezi toate →
                         </Link>
                     </div>
-                    
+
                     {loading ? (
                         <div className="text-center py-8">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
@@ -241,7 +302,7 @@ export default function CitizenDashboard() {
                             {requests.map((request) => {
                                 const stats = getValidationStats(request.id)
                                 const missing = getMissingDocuments(request)
-                                
+
                                 return (
                                     <div key={request.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                                         <div className="flex items-start justify-between mb-3">
@@ -335,14 +396,45 @@ export default function CitizenDashboard() {
                                                 </div>
                                             )}
 
+                                            {/* Lista documentelor încărcate */}
+                                            {documents[request.id] && documents[request.id].length > 0 && (
+                                                <div className="mt-2 space-y-2">
+                                                    {documents[request.id].map((doc) => (
+                                                        <div key={doc.id} className="flex items-start justify-between p-2 bg-gray-50 rounded text-xs">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    {doc.validation_status === 'approved' && (
+                                                                        <span className="text-green-600">✅</span>
+                                                                    )}
+                                                                    {doc.validation_status === 'rejected' && (
+                                                                        <span className="text-red-600">❌</span>
+                                                                    )}
+                                                                    {doc.validation_status === 'pending' && (
+                                                                        <span className="text-yellow-600">⏳</span>
+                                                                    )}
+                                                                    <span className="font-medium">
+                                                                        {getDocumentLabel(doc.document_type_ai)}
+                                                                    </span>
+                                                                </div>
+                                                                {doc.validation_message && (
+                                                                    <p className="mt-1 text-gray-600 ml-6">
+                                                                        {doc.validation_message}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
                                             {/* Dosar complet */}
-                                            {missing.length === 0 && stats.total > 0 && (
+                                            {missing.length === 0 && stats.total > 0 && stats.invalid === 0 && (
                                                 <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3">
                                                     <p className="text-sm font-medium text-green-800 flex items-center gap-2">
                                                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                                                         </svg>
-                                                        Dosar complet - toate documentele încărcate
+                                                        Dosar complet - toate documentele încărcate și validate
                                                     </p>
                                                 </div>
                                             )}
@@ -383,7 +475,7 @@ function ActionCard({ title, description, icon, color, href }: {
 
     if (href) {
         return (
-            <a 
+            <a
                 href={href}
                 className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow text-left block"
             >

@@ -3,14 +3,27 @@
 import { useState, useEffect, useRef } from 'react'
 import { Message, ChatbotResponse, API_BASE_URL } from '@/types'
 import { ChatService } from '@/lib/chatService'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function FloatingChatButton() {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [userId, setUserId] = useState<string | undefined>()
   const [detectedProcedure, setDetectedProcedure] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Get user ID on mount
+  useEffect(() => {
+    const getUserId = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUserId(user.id)
+      }
+    }
+    getUserId()
+  }, [])
 
   // Încarcă mesajele la deschiderea mini-chat-ului
   useEffect(() => {
@@ -64,6 +77,7 @@ export default function FloatingChatButton() {
         },
         body: JSON.stringify({
           question: inputMessage,
+          user_id: userId,
           procedure: detectedProcedure,
         }),
       })
@@ -168,11 +182,10 @@ export default function FloatingChatButton() {
                   className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                      message.role === 'user'
+                    className={`max-w-[80%] rounded-2xl px-4 py-2 ${message.role === 'user'
                         ? 'bg-purple-600 text-white rounded-br-sm'
                         : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100'
-                    }`}
+                      }`}
                   >
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     {message.checklist && message.checklist.length > 0 && (
@@ -241,17 +254,17 @@ export default function FloatingChatButton() {
           </svg>
         ) : (
           <>
-            <svg 
-              className="w-6 h-6" 
-              fill="none" 
-              viewBox="0 0 24 24" 
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" 
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
