@@ -1,10 +1,9 @@
 'use client'
 import React from 'react'
-import DashboardLayout from '../../components/DashboardLayout'
 
 export default function CitizenDashboard() {
     return (
-        <DashboardLayout role="citizen">
+        <div className="p-8">
             <div className="space-y-6">
                 {/* Welcome Card */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -65,7 +64,7 @@ export default function CitizenDashboard() {
                     </div>
                 </div>
             </div>
-        </DashboardLayout>
+        </div>
     )
 }
 

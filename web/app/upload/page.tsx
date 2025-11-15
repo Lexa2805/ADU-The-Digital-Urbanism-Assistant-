@@ -1,15 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import FileUploadForm from "@/components/FileUploadForm";
 import { UploadResponse } from "@/types";
+import CitizenPageLayout from "@/components/CitizenPageLayout";
 import Link from "next/link";
 
 export default function UploadPage() {
   const router = useRouter();
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [dossierId, setDossierId] = useState<string | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      } else {
+        setIsCheckingAuth(false);
+      }
+    };
+    checkAuth();
+  }, [router]);
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Se verifică autentificarea...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleUploadComplete = (response: UploadResponse) => {
     if (response.success) {
@@ -27,7 +53,8 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <CitizenPageLayout>
+      <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-purple-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -197,6 +224,7 @@ export default function UploadPage() {
           </div>
         )}
       </main>
-    </div>
+      </div>
+    </CitizenPageLayout>
   );
 }

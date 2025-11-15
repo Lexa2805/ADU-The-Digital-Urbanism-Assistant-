@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DossierStatus, API_BASE_URL } from "@/types";
 import StatusTimeline from "@/components/StatusTimeline";
+import CitizenPageLayout from "@/components/CitizenPageLayout";
 import Link from "next/link";
 
 export default function StatusPage() {
@@ -111,20 +112,12 @@ export default function StatusPage() {
           </div>
         </main>
       </div>
-    );
-  }
+    </CitizenPageLayout>
+  );
+}
 
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-purple-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-purple-700">Status dosar</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Urmărește progresul cererii tale
-              </p>
+// Helper function for formatting dates
+function formatDate(dateString: string): string {
             </div>
             <div className="flex gap-3">
               <Link
@@ -252,6 +245,7 @@ export default function StatusPage() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+    </CitizenPageLayout>
   );
 }

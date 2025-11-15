@@ -1,15 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { Message, ChatbotResponse, API_BASE_URL } from "@/types";
 import ChatWindow from "@/components/ChatWindow";
 import ChatInput from "@/components/ChatInput";
+import CitizenPageLayout from "@/components/CitizenPageLayout";
 import Link from "next/link";
 
 export default function ChatPage() {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      } else {
+        setIsCheckingAuth(false);
+      }
+    };
+    checkAuth();
+  }, [router]);
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Se verifică autentificarea...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleSendMessage = async (messageText: string) => {
     // Adaugă mesajul utilizatorului
@@ -75,7 +103,8 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <CitizenPageLayout>
+      <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-purple-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -159,6 +188,7 @@ export default function ChatPage() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+    </CitizenPageLayout>
   );
 }
