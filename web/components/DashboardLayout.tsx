@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabaseClient'
+import Link from 'next/link'
+import AdminNotifications from './admin/AdminNotifications'
 
 type Props = {
     children: React.ReactNode
@@ -68,12 +70,30 @@ export default function DashboardLayout({ children, role }: Props) {
                         </div>
 
                         <div className="flex items-center gap-4">
+                            {/* Admin Notifications */}
+                            {role === 'admin' && <AdminNotifications />}
+                            
+                            {/* User Menu */}
                             <div className="text-right hidden md:block">
                                 <p className="text-sm font-medium text-gray-700">
                                     {user?.user_metadata?.full_name || user?.email}
                                 </p>
                                 <p className="text-xs text-gray-500">{user?.email}</p>
                             </div>
+                            
+                            {/* Profile Link for Admin */}
+                            {role === 'admin' && (
+                                <Link
+                                    href="/admin/profile"
+                                    className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                    title="Profil"
+                                >
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                </Link>
+                            )}
+                            
                             <button
                                 onClick={handleLogout}
                                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"

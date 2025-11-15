@@ -2,8 +2,14 @@
 import React, { useState } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
 import AdminUserManagement from '../../components/admin/AdminUserManagement'
+import AdminAnalytics from '../../components/admin/AdminAnalytics'
+import AdminQuickActions from '../../components/admin/AdminQuickActions'
+import AdminSmartNotifications from '../../components/admin/AdminSmartNotifications'
+import AdminCalendar from '../../components/admin/AdminCalendar'
+import AdminAdvancedSearch from '../../components/admin/AdminAdvancedSearch'
+import AdminSystemSettings from '../../components/admin/AdminSystemSettings'
 
-type AdminTab = 'overview' | 'users' | 'activity' | 'settings'
+type AdminTab = 'overview' | 'users' | 'activity' | 'analytics' | 'calendar' | 'search' | 'settings'
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState<AdminTab>('overview')
@@ -59,6 +65,39 @@ export default function AdminDashboard() {
                                 Istoric Activitate
                             </TabButton>
                             <TabButton
+                                active={activeTab === 'analytics'}
+                                onClick={() => setActiveTab('analytics')}
+                                icon={
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                }
+                            >
+                                Analiză & Rapoarte
+                            </TabButton>
+                            <TabButton
+                                active={activeTab === 'calendar'}
+                                onClick={() => setActiveTab('calendar')}
+                                icon={
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                }
+                            >
+                                Calendar Termene
+                            </TabButton>
+                            <TabButton
+                                active={activeTab === 'search'}
+                                onClick={() => setActiveTab('search')}
+                                icon={
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                }
+                            >
+                                Căutare Avansată
+                            </TabButton>
+                            <TabButton
                                 active={activeTab === 'settings'}
                                 onClick={() => setActiveTab('settings')}
                                 icon={
@@ -78,7 +117,10 @@ export default function AdminDashboard() {
                 {activeTab === 'overview' && <OverviewTab />}
                 {activeTab === 'users' && <AdminUserManagement />}
                 {activeTab === 'activity' && <ActivityTab />}
-                {activeTab === 'settings' && <SettingsTab />}
+                {activeTab === 'analytics' && <AdminAnalytics />}
+                {activeTab === 'calendar' && <AdminCalendar />}
+                {activeTab === 'search' && <AdminAdvancedSearch />}
+                {activeTab === 'settings' && <AdminSystemSettings />}
             </div>
         </DashboardLayout>
     )
@@ -113,6 +155,12 @@ function TabButton({
 function OverviewTab() {
     return (
         <div className="space-y-6">
+            {/* Smart Notifications */}
+            <AdminSmartNotifications />
+
+            {/* Quick Actions Panel */}
+            <AdminQuickActions />
+
             {/* System Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <AdminStatCard
@@ -216,19 +264,6 @@ function ActivityTab() {
             </h3>
             <p className="text-gray-600">
                 Aici va fi afișat istoricul complet al activității din sistem, cu filtre pentru tipuri de acțiuni și utilizatori.
-            </p>
-        </div>
-    )
-}
-
-function SettingsTab() {
-    return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                Configurări Sistem (În Dezvoltare)
-            </h3>
-            <p className="text-gray-600">
-                Aici vor fi configurările globale ale sistemului ADU, inclusiv setări AI, GDPR și notificări.
             </p>
         </div>
     )
