@@ -72,8 +72,8 @@ export default function SignupPage() {
         setLoading(true)
         try {
             console.log('Starting signup for:', email)
-            
-            // Înregistrare cu Supabase
+
+            // Înregistrare cu Supabase (fără confirmare email)
             const { data, error } = await supabase.auth.signUp({
                 email,
                 password,
@@ -81,6 +81,7 @@ export default function SignupPage() {
                     data: {
                         full_name: name,
                     },
+                    emailRedirectTo: undefined, // Nu trimite email de confirmare
                 }
             })
 
@@ -89,7 +90,7 @@ export default function SignupPage() {
             if (error) {
                 console.error('Signup error:', error)
                 let errorMessage = 'Înregistrare eșuată. Încearcă din nou.'
-                
+
                 if (error.message.includes('User already registered')) {
                     errorMessage = 'Acest email este deja înregistrat. Te rugăm să te autentifici.'
                 } else if (error.message.includes('Password should be')) {
@@ -97,7 +98,7 @@ export default function SignupPage() {
                 } else {
                     errorMessage = error.message
                 }
-                
+
                 setErrors({ general: errorMessage })
                 return
             }
@@ -111,18 +112,36 @@ export default function SignupPage() {
 
                 console.log('Signup success! User:', data.user)
                 console.log('Email confirmed:', data.user.email_confirmed_at)
-                
-                // Creează profilul utilizatorului în baza de date
-                try {
-                    await createUserProfile(data.user.id, name, 'citizen')
-                    console.log('Profile created successfully')
-                } catch (profileError) {
-                    console.error('Profile creation error:', profileError)
-                    // Continua oricum - profilul poate fi creat automat prin trigger
+
+                // Așteaptă ca trigger-ul să creeze profilul automat
+                await new Promise(resolve => setTimeout(resolve, 1000))
+
+                // Verifică dacă profilul a fost creat
+                const { data: profileCheck } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('id', data.user.id)
+                    .maybeSingle()
+
+                console.log('Profile check:', profileCheck ? 'exists' : 'creating manually')
+
+                // Dacă nu există, creează manual
+                if (!profileCheck) {
+                    try {
+                        await supabase.from('profiles').insert({
+                            id: data.user.id,
+                            full_name: name,
+                            role: 'citizen'
+                        })
+                        console.log('Profile created manually')
+                    } catch (profileError) {
+                        console.error('Profile creation error:', profileError)
+                        // Continuă oricum
+                    }
                 }
-                
+
                 setSuccess(true)
-                
+
                 // Redirect la login după 2 secunde
                 setTimeout(() => {
                     router.push('/login')
@@ -173,98 +192,98 @@ export default function SignupPage() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-5">
-                        <TextInput
-                            id="name"
-                            label="Nume complet"
-                            value={name}
-                            onChange={setName}
-                            placeholder="Ion Popescu"
-                            autoComplete="name"
-                            error={errors.name ?? null}
-                            required
-                        />
+                            <TextInput
+                                id="name"
+                                label="Nume complet"
+                                value={name}
+                                onChange={setName}
+                                placeholder="Ion Popescu"
+                                autoComplete="name"
+                                error={errors.name ?? null}
+                                required
+                            />
 
-                        <TextInput
-                            id="email"
-                            label="Email"
-                            value={email}
-                            onChange={setEmail}
-                            placeholder="nume@exemplu.ro"
-                            autoComplete="email"
-                            error={errors.email ?? null}
-                            required
-                        />
+                            <TextInput
+                                id="email"
+                                label="Email"
+                                value={email}
+                                onChange={setEmail}
+                                placeholder="nume@exemplu.ro"
+                                autoComplete="email"
+                                error={errors.email ?? null}
+                                required
+                            />
 
-                        <PasswordInput
-                            id="password"
-                            label="Parolă"
-                            value={password}
-                            onChange={setPassword}
-                            placeholder="Minim 8 caractere"
-                            autoComplete="new-password"
-                            error={errors.password ?? null}
-                            required
-                        />
+                            <PasswordInput
+                                id="password"
+                                label="Parolă"
+                                value={password}
+                                onChange={setPassword}
+                                placeholder="Minim 8 caractere"
+                                autoComplete="new-password"
+                                error={errors.password ?? null}
+                                required
+                            />
 
-                        <PasswordInput
-                            id="confirm"
-                            label="Confirmare parolă"
-                            value={confirm}
-                            onChange={setConfirm}
-                            placeholder="Reintrodu parola"
-                            autoComplete="new-password"
-                            error={errors.confirm ?? null}
-                            required
-                        />
+                            <PasswordInput
+                                id="confirm"
+                                label="Confirmare parolă"
+                                value={confirm}
+                                onChange={setConfirm}
+                                placeholder="Reintrodu parola"
+                                autoComplete="new-password"
+                                error={errors.confirm ?? null}
+                                required
+                            />
 
-                        <div>
-                            <label className="flex items-start gap-2.5 cursor-pointer group">
-                                <input
-                                    type="checkbox"
-                                    checked={terms}
-                                    onChange={(e) => setTerms(e.target.checked)}
-                                    className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer mt-0.5"
-                                />
-                                <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
-                                    Accept{' '}
-                                    <a href="#" className="text-purple-600 hover:text-purple-700 underline">
-                                        termenii și condițiile
-                                    </a>
-                                </span>
-                            </label>
-                            {errors.terms && <p className="mt-1.5 text-sm text-red-500 ml-6">{errors.terms}</p>}
-                        </div>
-
-                        {errors.general && (
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                <p className="text-sm text-red-600">{errors.general}</p>
+                            <div>
+                                <label className="flex items-start gap-2.5 cursor-pointer group">
+                                    <input
+                                        type="checkbox"
+                                        checked={terms}
+                                        onChange={(e) => setTerms(e.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer mt-0.5"
+                                    />
+                                    <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
+                                        Accept{' '}
+                                        <a href="#" className="text-purple-600 hover:text-purple-700 underline">
+                                            termenii și condițiile
+                                        </a>
+                                    </span>
+                                </label>
+                                {errors.terms && <p className="mt-1.5 text-sm text-red-500 ml-6">{errors.terms}</p>}
                             </div>
-                        )}
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full inline-flex justify-center items-center rounded-lg bg-purple-600 text-white px-4 py-2.5 text-sm font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                        >
-                            {loading ? (
-                                <>
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Se înregistrează...
-                                </>
-                            ) : (
-                                'Creează cont'
+                            {errors.general && (
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                    <p className="text-sm text-red-600">{errors.general}</p>
+                                </div>
                             )}
-                        </button>
 
-                        <p className="text-sm text-center text-gray-600">
-                            Ai deja cont?{' '}
-                            <a href="/login" className="text-purple-600 hover:text-purple-700 font-medium transition-colors">
-                                Autentifică-te
-                            </a>
-                        </p>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full inline-flex justify-center items-center rounded-lg bg-purple-600 text-white px-4 py-2.5 text-sm font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                            >
+                                {loading ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Se înregistrează...
+                                    </>
+                                ) : (
+                                    'Creează cont'
+                                )}
+                            </button>
+
+                            <p className="text-sm text-center text-gray-600">
+                                Ai deja cont?{' '}
+                                <a href="/login" className="text-purple-600 hover:text-purple-700 font-medium transition-colors">
+                                    Autentifică-te
+                                </a>
+                            </p>
                         </form>
                     </>
                 )}

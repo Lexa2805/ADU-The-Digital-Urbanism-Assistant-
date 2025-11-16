@@ -33,7 +33,7 @@ export default function ProfilePage() {
     const loadProfile = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            
+
             if (!user) {
                 router.push('/login')
                 return
@@ -70,27 +70,60 @@ export default function ProfilePage() {
 
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            
+
             if (!user) {
                 router.push('/login')
                 return
             }
 
-            // Actualizează profilul
-            const { error: updateError } = await supabase
+            // Verifică ce coloane există în profiles
+            const { data: existingProfile } = await supabase
                 .from('profiles')
-                .update({
-                    full_name: profile.full_name,
-                    phone: profile.phone || null,
-                    address: profile.address || null,
-                    city: profile.city || null,
-                    updated_at: new Date().toISOString(),
-                })
+                .select('*')
                 .eq('id', user.id)
+                .single()
+
+            console.log('Existing profile structure:', existingProfile)
+
+            // Construiește obiectul de update doar cu câmpurile care există
+            const updateObj: any = {
+                full_name: profile.full_name,
+            }
+
+            // Adaugă câmpurile opționale doar dacă există în tabel
+            if (existingProfile && 'phone' in existingProfile) {
+                updateObj.phone = profile.phone || null
+            }
+            if (existingProfile && 'address' in existingProfile) {
+                updateObj.address = profile.address || null
+            }
+            if (existingProfile && 'city' in existingProfile) {
+                updateObj.city = profile.city || null
+            }
+            if (existingProfile && 'updated_at' in existingProfile) {
+                updateObj.updated_at = new Date().toISOString()
+            }
+
+            console.log('Update object:', updateObj)
+
+            // Actualizează profilul
+            const { data: updateData, error: updateError } = await supabase
+                .from('profiles')
+                .update(updateObj)
+                .eq('id', user.id)
+                .select()
 
             if (updateError) {
-                throw updateError
+                console.error('Update error details:', {
+                    message: updateError.message,
+                    details: updateError.details,
+                    hint: updateError.hint,
+                    code: updateError.code
+                })
+                throw new Error(updateError.message || updateError.hint || 'Eroare la actualizarea profilului')
             }
+
+            console.log('Profile updated successfully:', updateData)
 
             // Actualizează și metadata user
             const { error: authError } = await supabase.auth.updateUser({
@@ -102,12 +135,13 @@ export default function ProfilePage() {
             }
 
             setMessage({ type: 'success', text: 'Profilul a fost actualizat cu succes!' })
-            
+
             // Reîncarcă profilul
             await loadProfile()
         } catch (error: any) {
             console.error('Save error:', error)
-            setMessage({ type: 'error', text: error.message || 'Eroare la salvarea profilului' })
+            const errorMessage = error?.message || error?.error_description || 'Eroare la salvarea profilului'
+            setMessage({ type: 'error', text: errorMessage })
         } finally {
             setSaving(false)
         }
@@ -115,10 +149,10 @@ export default function ProfilePage() {
 
     const handleDeleteAccount = async () => {
         setDeleting(true)
-        
+
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            
+
             if (!user) {
                 router.push('/login')
                 return
@@ -177,12 +211,10 @@ export default function ProfilePage() {
 
                 {/* Message */}
                 {message && (
-                    <div className={`rounded-lg p-4 ${
-                        message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                    }`}>
-                        <p className={`text-sm ${
-                            message.type === 'success' ? 'text-green-800' : 'text-red-800'
+                    <div className={`rounded-lg p-4 ${message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
                         }`}>
+                        <p className={`text-sm ${message.type === 'success' ? 'text-green-800' : 'text-red-800'
+                            }`}>
                             {message.text}
                         </p>
                     </div>
@@ -191,7 +223,7 @@ export default function ProfilePage() {
                 {/* Informații Personale */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <h2 className="text-xl font-semibold text-gray-900 mb-6">Informații Personale</h2>
-                    
+
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -280,7 +312,7 @@ export default function ProfilePage() {
                 {/* Securitate */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <h2 className="text-xl font-semibold text-gray-900 mb-4">Securitate și Confidențialitate</h2>
-                    
+
                     <div className="space-y-4">
                         <div className="flex items-start gap-3 p-4 bg-purple-50 rounded-lg">
                             <svg className="w-5 h-5 text-purple-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -314,7 +346,7 @@ export default function ProfilePage() {
                 {/* Zona Periculoasă */}
                 <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6">
                     <h2 className="text-xl font-semibold text-red-700 mb-4">Zonă Periculoasă</h2>
-                    
+
                     <div className="space-y-4">
                         <div className="flex items-start gap-3 p-4 bg-red-50 rounded-lg">
                             <svg className="w-5 h-5 text-red-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

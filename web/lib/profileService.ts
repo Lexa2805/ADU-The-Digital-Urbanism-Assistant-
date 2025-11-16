@@ -24,8 +24,9 @@ export async function createUserProfile(userId: string, fullName: string, role: 
         .single()
 
     if (error) {
-        console.error('Error creating profile:', error)
-        throw error
+        console.error('Error creating profile:', error.message || error)
+        // Nu arunca eroarea - trigger-ul o va crea automat
+        return null
     }
 
     return data
@@ -61,8 +62,8 @@ export async function updateUserProfile(userId: string, updates: Partial<UserPro
         .single()
 
     if (error) {
-        console.error('Error updating profile:', error)
-        throw error
+        console.error('Error updating profile:', error.message || error)
+        throw new Error(error.message || 'Eroare la actualizarea profilului')
     }
 
     return data
