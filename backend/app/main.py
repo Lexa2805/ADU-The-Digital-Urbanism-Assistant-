@@ -286,6 +286,16 @@ async def upload_documents(
         has_property_deed = False
         citizen_name = "N/A"
         
+        # Check for existing documents if user_id is provided
+        existing_doc_types = []
+        if user_id:
+            try:
+                existing_docs_response = supabase.table("documents").select("document_type_ai, requests!inner(user_id)").eq("requests.user_id", user_id).execute()
+                if existing_docs_response.data:
+                    existing_doc_types = [doc.get("document_type_ai") for doc in existing_docs_response.data if doc.get("document_type_ai")]
+            except Exception as existing_err:
+                print(f"Warning: Could not check existing documents: {existing_err}")
+        
         # Process each uploaded file
         for file in files:
             file_content = await file.read()
@@ -300,6 +310,17 @@ async def upload_documents(
                     document_type="unknown",
                     is_valid=False,
                     validation_message="Nu pot determina tipul documentului. Vă rugăm să încărcați un document valid (carte de identitate, plan cadastral, act de proprietate sau certificat de urbanism).",
+                    extracted_data={}
+                ))
+                continue
+            
+            # Check if this document type was already uploaded
+            if doc_type in existing_doc_types:
+                documents_processed.append(DocumentResult(
+                    filename=file.filename,
+                    document_type=doc_type,
+                    is_valid=False,
+                    validation_message=f"⚠️ Ai încărcat deja un document de tip '{doc_type}'. Nu poți încărca același tip de document de două ori. Dacă vrei să înlocuiești documentul, te rugăm să ștergi cel vechi mai întâi.",
                     extracted_data={}
                 ))
                 continue
