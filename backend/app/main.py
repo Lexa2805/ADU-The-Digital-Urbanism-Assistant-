@@ -220,7 +220,7 @@ def chatbot(request: ChatRequest):
         # Extract previously detected domain from conversation history
         detected_domain_from_history = None
         for msg in reversed(conversation_history):
-            if msg.get("role") == "system" and "Domain detected" in msg.get("content", ""):
+            if "[SYSTEM] CONTEXT: Domain detected" in msg.get("content", ""):
                 try:
                     detected_domain_from_history = msg["content"].split("=")[-1].strip()
                     break
@@ -307,11 +307,11 @@ def chatbot(request: ChatRequest):
         # If domain is detected, save it to conversation context for next message
         if detected_domain and request.user_id:
             try:
-                # Store detected domain in chat_messages metadata for context
+                # Store detected domain as assistant message with [SYSTEM] prefix
                 supabase.table("chat_messages").insert({
                     "user_id": request.user_id,
-                    "role": "system",
-                    "content": f"CONTEXT: Domain detected = {detected_domain}"
+                    "role": "assistant",
+                    "content": f"[SYSTEM] CONTEXT: Domain detected = {detected_domain}"
                 }).execute()
             except Exception as domain_save_err:
                 print(f"Warning: Could not save domain context: {domain_save_err}")

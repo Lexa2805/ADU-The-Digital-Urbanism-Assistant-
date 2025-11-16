@@ -50,13 +50,16 @@ export default function ChatPage() {
               .limit(50);
 
             if (isMounted && messagesData) {
-              const formattedMessages: Message[] = messagesData.map((msg: any) => ({
-                id: msg.id,
-                role: msg.role,
-                content: msg.content,
-                timestamp: new Date(msg.created_at),
-                checklist: msg.checklist || undefined,
-              }));
+              // Filter out system messages (with [SYSTEM] prefix) - they're only for context
+              const formattedMessages: Message[] = messagesData
+                .filter((msg: any) => !msg.content.startsWith('[SYSTEM]'))
+                .map((msg: any) => ({
+                  id: msg.id,
+                  role: msg.role,
+                  content: msg.content,
+                  timestamp: new Date(msg.created_at),
+                  checklist: msg.checklist || undefined,
+                }));
               setMessages(formattedMessages);
             }
           } catch (error) {
