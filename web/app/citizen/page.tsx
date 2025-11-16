@@ -368,34 +368,6 @@ export default function CitizenDashboard() {
                                                 </div>
                                             </div>
 
-                                            {/* Documente lipsă */}
-                                            {missing.length > 0 && (
-                                                <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                                                    <p className="text-sm font-medium text-yellow-800 mb-2">
-                                                        ⚠️ {missing.length} documente lipsă
-                                                    </p>
-                                                    <ul className="text-xs text-yellow-700 space-y-1">
-                                                        {missing.slice(0, 3).map((doc, idx) => (
-                                                            <li key={idx} className="flex items-center gap-2">
-                                                                <span>•</span>
-                                                                <span>{doc}</span>
-                                                            </li>
-                                                        ))}
-                                                        {missing.length > 3 && (
-                                                            <li className="text-yellow-600 font-medium">
-                                                                +{missing.length - 3} altele
-                                                            </li>
-                                                        )}
-                                                    </ul>
-                                                    <Link
-                                                        href="/upload"
-                                                        className="mt-2 inline-block text-xs text-yellow-800 font-semibold hover:text-yellow-900"
-                                                    >
-                                                        Încarcă documente →
-                                                    </Link>
-                                                </div>
-                                            )}
-
                                             {/* Lista documentelor încărcate */}
                                             {documents[request.id] && documents[request.id].length > 0 && (
                                                 <div className="mt-2 space-y-2">
